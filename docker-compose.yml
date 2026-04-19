@@ -7,7 +7,18 @@ services:
     image: ghcr.io/pasta-devs/marinara-engine:latest
     init: true
     ports:
-      - "${PORT:-7860}:7860"
+      - "${PORT:-7861}:7860"
+    volumes:
+      - marinara-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DATA_DIR=/app/data
+    restart: unless-stopped
+
+  marinara-dev:
+    build: .
+    ports:
+      - "${PORT:-7861}:7860"
     volumes:
       - marinara-data:/app/data
     environment:
