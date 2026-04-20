@@ -19,6 +19,7 @@ import { useTranslationStore } from "../stores/translation.store";
 import { useUIStore } from "../stores/ui.store";
 import { chatKeys } from "./use-chats";
 import { characterKeys } from "./use-characters";
+import { lorebookKeys } from "./use-lorebooks";
 import { playNotificationPing } from "../lib/notification-sound";
 import { stripGmTagsKeepReadables } from "../lib/game-tag-parser";
 import type { Chat, GameMap, Message } from "@marinara-engine/shared";
@@ -1031,6 +1032,15 @@ export function useGenerate() {
               } else if (actionData.action === "chat_created") {
                 toast(`Started ${actionData.mode} chat with ${actionData.characterName}`, { icon: "💬" });
                 qc.invalidateQueries({ queryKey: ["chats"] });
+              } else if (actionData.action === "lorebook_created") {
+                toast(`Created lorebook: ${actionData.name}`, { icon: "📖" });
+                qc.invalidateQueries({ queryKey: lorebookKeys.all });
+              } else if (actionData.action === "lorebook_entry_created") {
+                toast(`Added entry "${actionData.name}" to ${actionData.lorebookName}`, { icon: "📝" });
+                qc.invalidateQueries({ queryKey: lorebookKeys.all });
+              } else if (actionData.action === "lorebook_entry_updated") {
+                toast(`Updated entry "${actionData.name}" in ${actionData.lorebookName}`, { icon: "✏️" });
+                qc.invalidateQueries({ queryKey: lorebookKeys.all });
               } else if (actionData.action === "navigate") {
                 const panel = actionData.panel as string;
                 const tab = actionData.tab as string | null;

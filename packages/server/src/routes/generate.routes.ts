@@ -67,6 +67,9 @@ import {
   type CreateChatCommand,
   type NavigateCommand,
   type FetchCommand,
+  type CreateLorebookCommand,
+  type CreateLorebookEntryCommand,
+  type UpdateLorebookEntryCommand,
 } from "../services/conversation/character-commands.js";
 import { MARI_ASSISTANT_PROMPT } from "../db/seed-mari.js";
 import { executeKnowledgeRetrieval } from "../services/agents/knowledge-retrieval.js";
@@ -1544,6 +1547,18 @@ export async function generateRoutes(app: FastifyInstance) {
               "\n\n<loaded_context>\nThe following items were previously fetched and are available for reference:\n\n" +
               contextSections.join("\n\n") +
               "\n</loaded_context>";
+          }
+
+          // Inject command errors from the previous turn, then clear them
+          const mariCommandErrors = chatMeta.mariCommandErrors as string[] | undefined;
+          if (mariCommandErrors && mariCommandErrors.length > 0) {
+            conversationSystemPrompt +=
+              "\n\n<command_errors>\nThe following commands you used in your last message FAILED and must be corrected:\n" +
+              mariCommandErrors.map((e) => `- ${e}`).join("\n") +
+              "\nPlease fix these errors in your next response.\n</command_errors>";
+            // Consume once — clear so they don't repeat every turn
+            const updatedMeta = { ...chatMeta, mariCommandErrors: undefined };
+            await chats.updateMetadata(input.chatId, updatedMeta);
           }
         }
 
@@ -5990,6 +6005,7 @@ export async function generateRoutes(app: FastifyInstance) {
       // ────────────────────────────────────────
       // Character Command Execution (Conversation mode)
       // ────────────────────────────────────────
+      const commandErrors: string[] = [];
       if (collectedCommands.length > 0 && !abortController.signal.aborted) {
         for (const { command, characterId, messageId } of collectedCommands) {
           try {
@@ -6545,6 +6561,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   console.log(`[commands] Assistant updated character: "${ucCmd.name}" (${targetChar.id})`);
                 } else {
                   console.warn(`[commands] Update character: "${ucCmd.name}" not found`);
+                  commandErrors.push(`update_character failed: character "${ucCmd.name}" not found. Check the available names list and use the exact name.`);
                 }
               } catch (err) {
                 console.error(`[commands] Update character failed:`, err);
@@ -6573,6 +6590,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   console.log(`[commands] Assistant updated persona: "${upCmd.name}" (${targetPersona.id})`);
                 } else {
                   console.warn(`[commands] Update persona: "${upCmd.name}" not found`);
+                  commandErrors.push(`update_persona failed: persona "${upCmd.name}" not found. Check the available names list and use the exact name.`);
                 }
               } catch (err) {
                 console.error(`[commands] Update persona failed:`, err);
@@ -6747,13 +6765,131 @@ export async function generateRoutes(app: FastifyInstance) {
                   console.log(`[commands] Assistant fetched ${fetchCmd.fetchType}: "${fetchCmd.name}"`);
                 } else {
                   console.warn(`[commands] Fetch: ${fetchCmd.fetchType} "${fetchCmd.name}" not found`);
+                  commandErrors.push(`fetch failed: ${fetchCmd.fetchType} "${fetchCmd.name}" not found. Check the available names list and use the exact name.`);
                 }
               } catch (err) {
                 console.error(`[commands] Fetch failed:`, err);
               }
             }
+
+            if (command.type === "create_lorebook") {
+              const clCmd = command as CreateLorebookCommand;
+              try {
+                const validCategories = ["world", "character", "npc", "spellbook", "uncategorized"] as const;
+                type LbCategory = (typeof validCategories)[number];
+                const category: LbCategory = validCategories.includes(clCmd.category as LbCategory)
+                  ? (clCmd.category as LbCategory)
+                  : "uncategorized";
+                const created = await lorebooksStore.create({
+                  name: clCmd.name,
+                  description: clCmd.description ?? "",
+                  category,
+                  enabled: true,
+                });
+                if (created) {
+                  reply.raw.write(
+                    `data: ${JSON.stringify({
+                      type: "assistant_action",
+                      data: { action: "lorebook_created", id: created.id, name: clCmd.name },
+                    })}\n\n`,
+                  );
+                  console.log(`[commands] Assistant created lorebook: "${clCmd.name}" (${created.id})`);
+                }
+              } catch (err) {
+                console.error(`[commands] Create lorebook failed:`, err);
+              }
+            }
+
+            if (command.type === "create_lorebook_entry") {
+              const cleCmd = command as CreateLorebookEntryCommand;
+              try {
+                const allBooks = await lorebooksStore.list();
+                const targetBook = (allBooks as any[]).find(
+                  (b: any) => b.name?.toLowerCase() === cleCmd.lorebook.toLowerCase(),
+                );
+                if (targetBook) {
+                  const parsedKeys = cleCmd.keys
+                    ? cleCmd.keys.split(",").map((k) => k.trim()).filter(Boolean)
+                    : [];
+                  const entry = await lorebooksStore.createEntry({
+                    lorebookId: targetBook.id,
+                    name: cleCmd.name,
+                    content: cleCmd.content ?? "",
+                    keys: parsedKeys,
+                    tag: cleCmd.tag ?? "",
+                  });
+                  if (entry) {
+                    reply.raw.write(
+                      `data: ${JSON.stringify({
+                        type: "assistant_action",
+                        data: { action: "lorebook_entry_created", id: entry.id, name: cleCmd.name, lorebookName: cleCmd.lorebook },
+                      })}\n\n`,
+                    );
+                    console.log(`[commands] Assistant created lorebook entry: "${cleCmd.name}" in "${cleCmd.lorebook}"`);
+                  }
+                } else {
+                  console.warn(`[commands] Create lorebook entry: lorebook "${cleCmd.lorebook}" not found`);
+                  commandErrors.push(`create_lorebook_entry failed: lorebook "${cleCmd.lorebook}" not found. Create it first with create_lorebook, or check the available lorebook names.`);
+                }
+              } catch (err) {
+                console.error(`[commands] Create lorebook entry failed:`, err);
+              }
+            }
+
+            if (command.type === "update_lorebook_entry") {
+              const uleCmd = command as UpdateLorebookEntryCommand;
+              try {
+                const allBooks = await lorebooksStore.list();
+                const targetBook = (allBooks as any[]).find(
+                  (b: any) => b.name?.toLowerCase() === uleCmd.lorebook.toLowerCase(),
+                );
+                if (targetBook) {
+                  const entries = await lorebooksStore.listEntries(targetBook.id);
+                  const targetEntry = (entries as any[]).find(
+                    (e: any) => e.name?.toLowerCase() === uleCmd.entryName.toLowerCase(),
+                  );
+                  if (targetEntry) {
+                    const updates: Record<string, unknown> = {};
+                    if (uleCmd.content !== undefined) updates.content = uleCmd.content;
+                    if (uleCmd.keys !== undefined) {
+                      updates.keys = uleCmd.keys.split(",").map((k) => k.trim()).filter(Boolean);
+                    }
+                    if (uleCmd.tag !== undefined) updates.tag = uleCmd.tag;
+                    await lorebooksStore.updateEntry(targetEntry.id, updates as any);
+                    reply.raw.write(
+                      `data: ${JSON.stringify({
+                        type: "assistant_action",
+                        data: { action: "lorebook_entry_updated", id: targetEntry.id, name: uleCmd.entryName, lorebookName: uleCmd.lorebook },
+                      })}\n\n`,
+                    );
+                    console.log(`[commands] Assistant updated lorebook entry: "${uleCmd.entryName}" in "${uleCmd.lorebook}"`);
+                  } else {
+                    console.warn(`[commands] Update lorebook entry: entry "${uleCmd.entryName}" not found in "${uleCmd.lorebook}"`);
+                    const existingNames = (entries as any[]).map((e: any) => e.name).join(", ");
+                    commandErrors.push(`update_lorebook_entry failed: entry "${uleCmd.entryName}" not found in lorebook "${uleCmd.lorebook}". Existing entries: ${existingNames || "(none)"}. Use the exact entry name or create it first with create_lorebook_entry.`);
+                  }
+                } else {
+                  console.warn(`[commands] Update lorebook entry: lorebook "${uleCmd.lorebook}" not found`);
+                  commandErrors.push(`update_lorebook_entry failed: lorebook "${uleCmd.lorebook}" not found. Create it first with create_lorebook, or check the available lorebook names.`);
+                }
+              } catch (err) {
+                console.error(`[commands] Update lorebook entry failed:`, err);
+              }
+            }
           } catch (cmdErr) {
             console.error(`[commands] Error processing ${command.type} command:`, cmdErr);
+          }
+        }
+
+        if (commandErrors.length > 0) {
+          try {
+            const freshChat = await chats.getById(input.chatId);
+            const freshMeta = parseExtra(freshChat?.metadata) as Record<string, unknown>;
+            freshMeta.mariCommandErrors = commandErrors;
+            await chats.updateMetadata(input.chatId, freshMeta);
+            console.log(`[commands] Saved ${commandErrors.length} command error(s) for next turn`);
+          } catch {
+            // Non-critical
           }
         }
       }

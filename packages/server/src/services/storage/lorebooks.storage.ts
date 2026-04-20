@@ -26,6 +26,7 @@ function resolveTimestamps(overrides?: TimestampOverrides | null) {
 function parseLorebookRow(row: Record<string, unknown>) {
   return {
     ...row,
+    id: row.id as string,
     recursiveScanning: row.recursiveScanning === "true",
     maxRecursionDepth: typeof row.maxRecursionDepth === "number" ? row.maxRecursionDepth : 3,
     enabled: row.enabled === "true",
@@ -40,6 +41,7 @@ function parseLorebookRow(row: Record<string, unknown>) {
 function parseEntryRow(row: Record<string, unknown>) {
   return {
     ...row,
+    id: row.id as string,
     enabled: row.enabled === "true",
     constant: row.constant === "true",
     selective: row.selective === "true",
