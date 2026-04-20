@@ -33,6 +33,10 @@ export const createConnectionSchema = z.object({
   imageGenerationSource: z.string().nullable().default(null),
   comfyuiWorkflow: z.string().nullable().default(null),
   imageService: z.string().nullable().default(null),
+  promptPrefix: z.string().nullable().default(null),
+  promptSuffix: z.string().nullable().default(null),
+  negativePromptPrefix: z.string().nullable().default(null),
+  negativePromptSuffix: z.string().nullable().default(null),
 });
 
 export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;

@@ -37,6 +37,10 @@ export interface NpcPortraitRequest {
   imgBaseUrl: string;
   imgApiKey: string;
   imgService?: string | null;
+  promptPrefix?: string | null;
+  promptSuffix?: string | null;
+  negativePromptPrefix?: string | null;
+  negativePromptSuffix?: string | null;
 }
 
 /**
@@ -72,6 +76,10 @@ export async function generateNpcPortrait(req: NpcPortraitRequest): Promise<stri
         model: req.imgModel,
         width: 512,
         height: 512,
+        promptPrefix: req.promptPrefix || undefined,
+        promptSuffix: req.promptSuffix || undefined,
+        negativePromptPrefix: req.negativePromptPrefix || undefined,
+        negativePromptSuffix: req.negativePromptSuffix || undefined,
       },
     );
 
@@ -115,6 +123,10 @@ export interface BackgroundGenRequest {
   imgBaseUrl: string;
   imgApiKey: string;
   imgService?: string | null;
+  promptPrefix?: string | null;
+  promptSuffix?: string | null;
+  negativePromptPrefix?: string | null;
+  negativePromptSuffix?: string | null;
 }
 
 /**
@@ -156,6 +168,10 @@ export async function generateBackground(req: BackgroundGenRequest): Promise<str
         model: req.imgModel,
         width: 1024,
         height: 576,
+        promptPrefix: req.promptPrefix || undefined,
+        promptSuffix: req.promptSuffix || undefined,
+        negativePromptPrefix: req.negativePromptPrefix || undefined,
+        negativePromptSuffix: req.negativePromptSuffix || undefined,
       },
     );
 

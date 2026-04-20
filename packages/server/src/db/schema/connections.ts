@@ -37,6 +37,14 @@ export const apiConnections = sqliteTable("api_connections", {
   imageService: text("image_service"),
   /** Default generation parameters (stored as JSON) for new chats using this connection */
   defaultParameters: text("default_parameters"),
+  /** Image generation: text prepended to the positive prompt */
+  promptPrefix: text("prompt_prefix"),
+  /** Image generation: text appended to the positive prompt */
+  promptSuffix: text("prompt_suffix"),
+  /** Image generation: text prepended to the negative prompt */
+  negativePromptPrefix: text("negative_prompt_prefix"),
+  /** Image generation: text appended to the negative prompt */
+  negativePromptSuffix: text("negative_prompt_suffix"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

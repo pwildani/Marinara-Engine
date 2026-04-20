@@ -717,6 +717,10 @@ async function applyRetryResultEffects(args: {
               const imgApiKey = imgConnFull.apiKey || "";
               const imgSource = (imgConnFull as any).imageGenerationSource || imgModel;
               const imgServiceHint = imgConnFull.imageService || imgSource;
+              const imgPromptPrefix = (imgConnFull as any).promptPrefix || undefined;
+              const imgPromptSuffix = (imgConnFull as any).promptSuffix || undefined;
+              const imgNegPromptPrefix = (imgConnFull as any).negativePromptPrefix || undefined;
+              const imgNegPromptSuffix = (imgConnFull as any).negativePromptSuffix || undefined;
 
               const chatMeta = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {});
               const selfieRes = (chatMeta.selfieResolution as string) ?? "";
@@ -802,6 +806,10 @@ async function applyRetryResultEffects(args: {
                 comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
                 referenceImage,
                 referenceImages,
+                promptPrefix: imgPromptPrefix,
+                promptSuffix: imgPromptSuffix,
+                negativePromptPrefix: imgNegPromptPrefix,
+                negativePromptSuffix: imgNegPromptSuffix,
               });
 
               const filePath = saveImageToDisk(chatId, imageResult.base64, imageResult.ext);

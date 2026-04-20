@@ -2623,6 +2623,10 @@ export async function gameRoutes(app: FastifyInstance) {
             const imgApiKey = imgConn.apiKey || "";
             const imgSource = (imgConn as any).imageGenerationSource || imgModel;
             const imgServiceHint = imgConn.imageService || imgSource;
+            const imgPromptPrefix = (imgConn as any).promptPrefix || undefined;
+            const imgPromptSuffix = (imgConn as any).promptSuffix || undefined;
+            const imgNegPromptPrefix = (imgConn as any).negativePromptPrefix || undefined;
+            const imgNegPromptSuffix = (imgConn as any).negativePromptSuffix || undefined;
 
             const setupCfg = meta.gameSetupConfig as Record<string, unknown> | null;
             const genre = (setupCfg?.genre as string) || "";
@@ -2668,6 +2672,10 @@ export async function gameRoutes(app: FastifyInstance) {
                   imgBaseUrl,
                   imgApiKey,
                   imgService: imgServiceHint,
+                  promptPrefix: imgPromptPrefix,
+                  promptSuffix: imgPromptSuffix,
+                  negativePromptPrefix: imgNegPromptPrefix,
+                  negativePromptSuffix: imgNegPromptSuffix,
                 });
 
                 if (generatedTag) {
@@ -2717,6 +2725,10 @@ export async function gameRoutes(app: FastifyInstance) {
                   imgBaseUrl,
                   imgApiKey,
                   imgService: imgServiceHint,
+                  promptPrefix: imgPromptPrefix,
+                  promptSuffix: imgPromptSuffix,
+                  negativePromptPrefix: imgNegPromptPrefix,
+                  negativePromptSuffix: imgNegPromptSuffix,
                 });
 
                 if (generatedTag) {
@@ -2855,6 +2867,10 @@ export async function gameRoutes(app: FastifyInstance) {
     const imgApiKey = imgConn.apiKey || "";
     const imgSource = (imgConn as any).imageGenerationSource || imgModel;
     const imgServiceHint = imgConn.imageService || imgSource;
+    const imgPromptPrefix = (imgConn as any).promptPrefix || undefined;
+    const imgPromptSuffix = (imgConn as any).promptSuffix || undefined;
+    const imgNegPromptPrefix = (imgConn as any).negativePromptPrefix || undefined;
+    const imgNegPromptSuffix = (imgConn as any).negativePromptSuffix || undefined;
 
     const setupCfg = meta.gameSetupConfig as Record<string, unknown> | null;
     const genre = (setupCfg?.genre as string) || "";
@@ -2886,6 +2902,10 @@ export async function gameRoutes(app: FastifyInstance) {
         imgBaseUrl,
         imgApiKey,
         imgService: imgServiceHint,
+        promptPrefix: imgPromptPrefix,
+        promptSuffix: imgPromptSuffix,
+        negativePromptPrefix: imgNegPromptPrefix,
+        negativePromptSuffix: imgNegPromptSuffix,
       });
       generatedBackground = tag;
     }
@@ -2923,6 +2943,10 @@ export async function gameRoutes(app: FastifyInstance) {
           imgBaseUrl,
           imgApiKey,
           imgService: imgServiceHint,
+          promptPrefix: imgPromptPrefix,
+          promptSuffix: imgPromptSuffix,
+          negativePromptPrefix: imgNegPromptPrefix,
+          negativePromptSuffix: imgNegPromptSuffix,
         });
         if (avatarUrl) {
           generatedNpcAvatars.push({ name: npc.name, avatarUrl });

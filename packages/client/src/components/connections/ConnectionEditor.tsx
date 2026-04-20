@@ -98,6 +98,10 @@ export function ConnectionEditor() {
   const [localImageGenerationSource, setLocalImageGenerationSource] = useState("");
   const [localComfyuiWorkflow, setLocalComfyuiWorkflow] = useState("");
   const [localImageService, setLocalImageService] = useState<string | null>(null);
+  const [localPromptPrefix, setLocalPromptPrefix] = useState("");
+  const [localPromptSuffix, setLocalPromptSuffix] = useState("");
+  const [localNegativePromptPrefix, setLocalNegativePromptPrefix] = useState("");
+  const [localNegativePromptSuffix, setLocalNegativePromptSuffix] = useState("");
 
   // Test results
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latencyMs: number } | null>(null);
@@ -182,6 +186,10 @@ export function ConnectionEditor() {
     );
     setLocalComfyuiWorkflow((c.comfyuiWorkflow as string) ?? "");
     setLocalImageService(((c.imageService as string | null) ?? (c.imageGenerationSource as string | null)) || null);
+    setLocalPromptPrefix((c.promptPrefix as string) ?? "");
+    setLocalPromptSuffix((c.promptSuffix as string) ?? "");
+    setLocalNegativePromptPrefix((c.negativePromptPrefix as string) ?? "");
+    setLocalNegativePromptSuffix((c.negativePromptSuffix as string) ?? "");
     setDirty(false);
     setSaveError(null);
     setTestResult(null);
@@ -258,6 +266,10 @@ export function ConnectionEditor() {
       comfyuiWorkflow: localComfyuiWorkflow || null,
       imageService:
         localProvider === "image_generation" ? localImageGenerationSource || localImageService || null : null,
+      promptPrefix: localProvider === "image_generation" ? localPromptPrefix || null : null,
+      promptSuffix: localProvider === "image_generation" ? localPromptSuffix || null : null,
+      negativePromptPrefix: localProvider === "image_generation" ? localNegativePromptPrefix || null : null,
+      negativePromptSuffix: localProvider === "image_generation" ? localNegativePromptSuffix || null : null,
     };
     // Only send API key if user typed a new one
     if (localApiKey.trim()) {
@@ -288,6 +300,10 @@ export function ConnectionEditor() {
     localImageGenerationSource,
     localComfyuiWorkflow,
     localImageService,
+    localPromptPrefix,
+    localPromptSuffix,
+    localNegativePromptPrefix,
+    localNegativePromptSuffix,
     updateConnection,
   ]);
 
@@ -977,6 +993,61 @@ export function ConnectionEditor() {
               <p className="text-[0.55rem] text-[var(--muted-foreground)] mt-1">
                 Export your workflow from ComfyUI using <strong>Save (API Format)</strong> in the menu. Placeholders
                 like <code>%prompt%</code> will be replaced at generation time.
+              </p>
+            </FieldGroup>
+          )}
+
+          {/* ── Prompt Wrapping (image generation) ── */}
+          {localProvider === "image_generation" && (
+            <FieldGroup
+              label="Model Prompt Wrapping (Optional)"
+              icon={<Zap size="0.875rem" className="text-violet-400" />}
+              help="Add model-specific text that wraps every prompt sent to this connection. Useful for quality tags required by specific checkpoints (e.g. 'masterpiece, best quality' for SD 1.5 models, or 'score_9' for Pony-based models)."
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[0.6875rem] text-[var(--muted-foreground)] mb-1">Positive prefix</label>
+                  <input
+                    type="text"
+                    value={localPromptPrefix}
+                    onChange={(e) => { setLocalPromptPrefix(e.target.value); markDirty(); }}
+                    placeholder="e.g. masterpiece, best quality,"
+                    className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-violet-400/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[0.6875rem] text-[var(--muted-foreground)] mb-1">Positive suffix</label>
+                  <input
+                    type="text"
+                    value={localPromptSuffix}
+                    onChange={(e) => { setLocalPromptSuffix(e.target.value); markDirty(); }}
+                    placeholder="e.g. , high resolution"
+                    className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-violet-400/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[0.6875rem] text-[var(--muted-foreground)] mb-1">Negative prefix</label>
+                  <input
+                    type="text"
+                    value={localNegativePromptPrefix}
+                    onChange={(e) => { setLocalNegativePromptPrefix(e.target.value); markDirty(); }}
+                    placeholder="e.g. worst quality, low quality,"
+                    className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-violet-400/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[0.6875rem] text-[var(--muted-foreground)] mb-1">Negative suffix</label>
+                  <input
+                    type="text"
+                    value={localNegativePromptSuffix}
+                    onChange={(e) => { setLocalNegativePromptSuffix(e.target.value); markDirty(); }}
+                    placeholder="e.g. , blurry, watermark"
+                    className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-violet-400/50"
+                  />
+                </div>
+              </div>
+              <p className="text-[0.55rem] text-[var(--muted-foreground)] mt-1">
+                Prefix and suffix are joined with a space to the generated prompt. Leave empty to send prompts unmodified.
               </p>
             </FieldGroup>
           )}

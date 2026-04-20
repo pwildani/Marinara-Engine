@@ -392,6 +392,10 @@ export async function spritesRoutes(app: FastifyInstance) {
     const imgApiKey = conn.apiKey || "";
     const imgSource = (conn as any).imageGenerationSource || imgModel;
     const imgServiceHint = conn.imageService || imgSource;
+    const imgPromptPrefix = (conn as any).promptPrefix || undefined;
+    const imgPromptSuffix = (conn as any).promptSuffix || undefined;
+    const imgNegativePromptPrefix = (conn as any).negativePromptPrefix || undefined;
+    const imgNegativePromptSuffix = (conn as any).negativePromptSuffix || undefined;
 
     // Build the prompt for an expression sheet or full-body
     const expressionList = expressions.join(", ");
@@ -450,6 +454,10 @@ export async function spritesRoutes(app: FastifyInstance) {
               referenceImage: resolvedRefs[0],
               referenceImages: resolvedRefs.length > 1 ? resolvedRefs : undefined,
               comfyWorkflow: conn.comfyuiWorkflow || undefined,
+              promptPrefix: imgPromptPrefix,
+              promptSuffix: imgPromptSuffix,
+              negativePromptPrefix: imgNegativePromptPrefix,
+              negativePromptSuffix: imgNegativePromptSuffix,
             });
 
             let spriteBuffer: Buffer = Buffer.from(imageResult.base64, "base64");
@@ -515,6 +523,10 @@ export async function spritesRoutes(app: FastifyInstance) {
         referenceImage: resolvedRefs[0],
         referenceImages: resolvedRefs.length > 1 ? resolvedRefs : undefined,
         comfyWorkflow: conn.comfyuiWorkflow || undefined,
+        promptPrefix: imgPromptPrefix,
+        promptSuffix: imgPromptSuffix,
+        negativePromptPrefix: imgNegativePromptPrefix,
+        negativePromptSuffix: imgNegativePromptSuffix,
       });
 
       // Decode the generated image

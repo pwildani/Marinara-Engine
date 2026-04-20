@@ -35,6 +35,14 @@ export interface ImageGenRequest {
   referenceImage?: string;
   /** Optional array of base64-encoded reference images (avatars). Providers that support multiple refs use all; others use the first. */
   referenceImages?: string[];
+  /** Model-specific text prepended to the positive prompt. */
+  promptPrefix?: string;
+  /** Model-specific text appended to the positive prompt. */
+  promptSuffix?: string;
+  /** Model-specific text prepended to the negative prompt. */
+  negativePromptPrefix?: string;
+  /** Model-specific text appended to the negative prompt. */
+  negativePromptSuffix?: string;
 }
 
 export interface ImageGenResult {
@@ -57,6 +65,13 @@ export async function generateImage(
   serviceHint: string,
   request: ImageGenRequest,
 ): Promise<ImageGenResult> {
+  // Apply model-specific prompt prefix/suffix before dispatching to the provider.
+  const wrappedPrompt = [request.promptPrefix, request.prompt, request.promptSuffix].filter(Boolean).join(" ");
+  const wrappedNegative =
+    [request.negativePromptPrefix, request.negativePrompt, request.negativePromptSuffix].filter(Boolean).join(" ") ||
+    undefined;
+  request = { ...request, prompt: wrappedPrompt, negativePrompt: wrappedNegative };
+
   // Infer the source from model name / base URL if the source looks like a legacy service ID
   // or if the caller passes a model name as source. An explicit serviceHint overrides inference.
   const resolvedSource = serviceHint || inferImageSource(source, baseUrl);

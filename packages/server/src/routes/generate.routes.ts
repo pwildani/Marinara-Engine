@@ -5282,6 +5282,10 @@ export async function generateRoutes(app: FastifyInstance) {
                       const imgApiKey = imgConnFull.apiKey || "";
                       const imgSource = (imgConnFull as any).imageGenerationSource || imgModel;
                       const imgServiceHint = imgConnFull.imageService || imgSource;
+                      const imgPromptPrefix = (imgConnFull as any).promptPrefix || undefined;
+                      const imgPromptSuffix = (imgConnFull as any).promptSuffix || undefined;
+                      const imgNegPromptPrefix = (imgConnFull as any).negativePromptPrefix || undefined;
+                      const imgNegPromptSuffix = (imgConnFull as any).negativePromptSuffix || undefined;
 
                       for (const npc of charsNeedingAvatars) {
                         try {
@@ -5299,6 +5303,10 @@ export async function generateRoutes(app: FastifyInstance) {
                             model: imgModel,
                             width: 512,
                             height: 512,
+                            promptPrefix: imgPromptPrefix,
+                            promptSuffix: imgPromptSuffix,
+                            negativePromptPrefix: imgNegPromptPrefix,
+                            negativePromptSuffix: imgNegPromptSuffix,
                           });
 
                           // Save to NPC avatars directory
@@ -5739,6 +5747,10 @@ export async function generateRoutes(app: FastifyInstance) {
                     const imgApiKey = imgConnFull.apiKey || "";
                     const imgSource = (imgConnFull as any).imageGenerationSource || imgModel;
                     const imgServiceHint = imgConnFull.imageService || imgSource;
+                    const imgPromptPrefix = (imgConnFull as any).promptPrefix || undefined;
+                    const imgPromptSuffix = (imgConnFull as any).promptSuffix || undefined;
+                    const imgNegPromptPrefix = (imgConnFull as any).negativePromptPrefix || undefined;
+                    const imgNegPromptSuffix = (imgConnFull as any).negativePromptSuffix || undefined;
 
                     // Use selfie resolution from chat metadata if set, otherwise fall back to aspect ratio defaults
                     const selfieRes = (chatMeta.selfieResolution as string) ?? "";
@@ -5846,6 +5858,10 @@ export async function generateRoutes(app: FastifyInstance) {
                       comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
                       referenceImage: illustratorRefImage,
                       referenceImages: illustratorRefImages,
+                      promptPrefix: imgPromptPrefix,
+                      promptSuffix: imgPromptSuffix,
+                      negativePromptPrefix: imgNegPromptPrefix,
+                      negativePromptSuffix: imgNegPromptSuffix,
                     });
 
                     // Save to disk
@@ -6240,6 +6256,10 @@ export async function generateRoutes(app: FastifyInstance) {
                       height: selfieH || 768,
                       comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
                       referenceImage: readAvatarBase64(charRow?.avatarPath as string | null),
+                      promptPrefix: (imgConnFull as any).promptPrefix || undefined,
+                      promptSuffix: (imgConnFull as any).promptSuffix || undefined,
+                      negativePromptPrefix: (imgConnFull as any).negativePromptPrefix || undefined,
+                      negativePromptSuffix: (imgConnFull as any).negativePromptSuffix || undefined,
                     });
 
                     // Save to disk and DB

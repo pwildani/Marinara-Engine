@@ -45,6 +45,14 @@ export interface APIConnection {
   imageService: string | null;
   /** Default generation parameters for new chats using this connection (JSON) */
   defaultParameters: string | null;
+  /** Image generation: text prepended to the positive prompt */
+  promptPrefix: string | null;
+  /** Image generation: text appended to the positive prompt */
+  promptSuffix: string | null;
+  /** Image generation: text prepended to the negative prompt */
+  negativePromptPrefix: string | null;
+  /** Image generation: text appended to the negative prompt */
+  negativePromptSuffix: string | null;
   createdAt: string;
   updatedAt: string;
 }

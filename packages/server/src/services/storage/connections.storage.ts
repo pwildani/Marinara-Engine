@@ -86,6 +86,10 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationSource: input.imageGenerationSource ?? null,
         comfyuiWorkflow: input.comfyuiWorkflow ?? null,
         imageService: input.imageService ?? null,
+        promptPrefix: input.promptPrefix ?? null,
+        promptSuffix: input.promptSuffix ?? null,
+        negativePromptPrefix: input.negativePromptPrefix ?? null,
+        negativePromptSuffix: input.negativePromptSuffix ?? null,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
@@ -158,6 +162,18 @@ export function createConnectionsStorage(db: DB) {
       if (data.imageService !== undefined) {
         updateFields.imageService = data.imageService;
       }
+      if (data.promptPrefix !== undefined) {
+        updateFields.promptPrefix = data.promptPrefix;
+      }
+      if (data.promptSuffix !== undefined) {
+        updateFields.promptSuffix = data.promptSuffix;
+      }
+      if (data.negativePromptPrefix !== undefined) {
+        updateFields.negativePromptPrefix = data.negativePromptPrefix;
+      }
+      if (data.negativePromptSuffix !== undefined) {
+        updateFields.negativePromptSuffix = data.negativePromptSuffix;
+      }
       await db.update(apiConnections).set(updateFields).where(eq(apiConnections.id, id));
       return this.getById(id);
     },
@@ -188,6 +204,10 @@ export function createConnectionsStorage(db: DB) {
         imageGenerationSource: source.imageGenerationSource,
         comfyuiWorkflow: source.comfyuiWorkflow,
         imageService: source.imageService,
+        promptPrefix: source.promptPrefix,
+        promptSuffix: source.promptSuffix,
+        negativePromptPrefix: source.negativePromptPrefix,
+        negativePromptSuffix: source.negativePromptSuffix,
         createdAt: timestamp,
         updatedAt: timestamp,
       });

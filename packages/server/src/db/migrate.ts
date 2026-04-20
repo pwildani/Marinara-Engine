@@ -511,6 +511,26 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: "default_parameters",
     definition: "TEXT",
   },
+  {
+    table: "api_connections",
+    column: "prompt_prefix",
+    definition: "TEXT",
+  },
+  {
+    table: "api_connections",
+    column: "prompt_suffix",
+    definition: "TEXT",
+  },
+  {
+    table: "api_connections",
+    column: "negative_prompt_prefix",
+    definition: "TEXT",
+  },
+  {
+    table: "api_connections",
+    column: "negative_prompt_suffix",
+    definition: "TEXT",
+  },
 ];
 
 export async function runMigrations(db: DB) {
