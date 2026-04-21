@@ -19,6 +19,7 @@ export interface HapticDevice {
 export interface HapticStatus {
   connected: boolean;
   serverUrl: string | null;
+  serverName: string | null;
   scanning: boolean;
   devices: HapticDevice[];
 }

@@ -4243,11 +4243,18 @@ function HapticConnectionPanel() {
   const connect = useHapticConnect();
   const disconnect = useHapticDisconnect();
   const startScan = useHapticStartScan();
+  const [customUrl, setCustomUrl] = useState(() => localStorage.getItem("haptic:serverUrl") ?? "");
+
+  const handleUrlChange = (v: string) => {
+    setCustomUrl(v);
+    if (v.trim()) localStorage.setItem("haptic:serverUrl", v.trim());
+    else localStorage.removeItem("haptic:serverUrl");
+  };
 
   // Auto-connect on mount if not connected
   useEffect(() => {
     if (!isLoading && status && !status.connected && !connect.isPending) {
-      connect.mutate(undefined);
+      connect.mutate(customUrl.trim() || undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
@@ -4266,12 +4273,23 @@ function HapticConnectionPanel() {
 
   return (
     <div className="space-y-1.5 px-1">
+      {/* URL override */}
+      {!connected && (
+        <input
+          type="text"
+          value={customUrl}
+          onChange={(e) => handleUrlChange(e.target.value)}
+          placeholder="ws://127.0.0.1:12345"
+          className="w-full rounded-md bg-[var(--secondary)] px-2.5 py-1.5 text-[0.625rem] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] outline-none"
+        />
+      )}
+
       {/* Connection status */}
       <div className="flex items-center justify-between rounded-lg bg-[var(--secondary)] px-3 py-2">
         <div className="flex items-center gap-1.5">
           <div className={cn("h-1.5 w-1.5 rounded-full", connected ? "bg-green-400" : "bg-red-400")} />
           <span className="text-[0.625rem] text-[var(--muted-foreground)]">
-            {connect.isPending ? "Connecting..." : connected ? "Connected to Intiface Central" : "Not connected"}
+            {connect.isPending ? "Connecting..." : connected ? `Connected to ${status?.serverName ?? "Intiface Central"}` : "Not connected"}
           </span>
         </div>
         <button
@@ -4279,7 +4297,7 @@ function HapticConnectionPanel() {
             if (connected) {
               disconnect.mutate();
             } else {
-              connect.mutate(undefined);
+              connect.mutate(customUrl.trim() || undefined);
             }
           }}
           disabled={connect.isPending || disconnect.isPending}

@@ -207,6 +207,27 @@ export function createAgentsStorage(db: DB) {
       return mem;
     },
 
+    async ensureBuiltinConfig(agentConfigId: string) {
+      const type = agentConfigId.slice("builtin:".length);
+      const meta = BUILT_IN_AGENTS.find((a) => a.id === type);
+      const existing = await db.select({ id: agentConfigs.id }).from(agentConfigs).where(eq(agentConfigs.id, agentConfigId));
+      if (existing.length > 0) return;
+      const timestamp = now();
+      await db.insert(agentConfigs).values({
+        id: agentConfigId,
+        type,
+        name: meta?.name ?? type,
+        description: meta?.description ?? "",
+        phase: (meta?.phase ?? "pre_generation") as "pre_generation" | "parallel" | "post_processing",
+        enabled: "true",
+        connectionId: null,
+        promptTemplate: "",
+        settings: "{}",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+    },
+
     async setMemory(agentConfigId: string, chatId: string, key: string, value: unknown) {
       const resolvedAgentConfigId = await resolveAgentConfigId(agentConfigId);
       const stringValue = typeof value === "string" ? value : JSON.stringify(value);
