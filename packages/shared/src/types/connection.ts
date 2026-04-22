@@ -53,6 +53,8 @@ export interface APIConnection {
   negativePromptPrefix: string | null;
   /** Image generation: text appended to the negative prompt */
   negativePromptSuffix: string | null;
+  /** Hard cap on max_tokens sent to the API (for providers with lower limits, e.g. DeepSeek at 8192). */
+  maxTokensOverride: number | null;
   createdAt: string;
   updatedAt: string;
 }

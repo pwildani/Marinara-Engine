@@ -90,6 +90,7 @@ export function createConnectionsStorage(db: DB) {
         promptSuffix: input.promptSuffix ?? null,
         negativePromptPrefix: input.negativePromptPrefix ?? null,
         negativePromptSuffix: input.negativePromptSuffix ?? null,
+        maxTokensOverride: input.maxTokensOverride ?? null,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
@@ -174,6 +175,9 @@ export function createConnectionsStorage(db: DB) {
       if (data.negativePromptSuffix !== undefined) {
         updateFields.negativePromptSuffix = data.negativePromptSuffix;
       }
+      if (data.maxTokensOverride !== undefined) {
+        updateFields.maxTokensOverride = data.maxTokensOverride;
+      }
       await db.update(apiConnections).set(updateFields).where(eq(apiConnections.id, id));
       return this.getById(id);
     },
@@ -208,6 +212,7 @@ export function createConnectionsStorage(db: DB) {
         promptSuffix: source.promptSuffix,
         negativePromptPrefix: source.negativePromptPrefix,
         negativePromptSuffix: source.negativePromptSuffix,
+        maxTokensOverride: source.maxTokensOverride,
         createdAt: timestamp,
         updatedAt: timestamp,
       });

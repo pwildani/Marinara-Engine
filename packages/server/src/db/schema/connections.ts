@@ -45,6 +45,8 @@ export const apiConnections = sqliteTable("api_connections", {
   negativePromptPrefix: text("negative_prompt_prefix"),
   /** Image generation: text appended to the negative prompt */
   negativePromptSuffix: text("negative_prompt_suffix"),
+  /** Optional hard cap on max_tokens sent to the API (for providers like DeepSeek that have lower limits). */
+  maxTokensOverride: integer("max_tokens_override"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

@@ -411,7 +411,14 @@ export abstract class BaseLLMProvider {
     protected apiKey: string,
     protected defaultMaxContext?: number,
     protected defaultOpenrouterProvider?: string | null,
+    protected maxTokensOverride?: number | null,
   ) {}
+
+  /** Cap a maxTokens value to the connection-level override, if one is set. */
+  protected applyMaxTokensCap(tokens: number): number {
+    if (this.maxTokensOverride && tokens > this.maxTokensOverride) return this.maxTokensOverride;
+    return tokens;
+  }
 
   protected fitMessagesToContext(messages: ChatMessage[], options: Pick<ChatOptions, "maxContext" | "maxTokens">) {
     return fitMessagesToContext(messages, options, this.defaultMaxContext);

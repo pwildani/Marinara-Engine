@@ -37,6 +37,7 @@ export const createConnectionSchema = z.object({
   promptSuffix: z.string().nullable().default(null),
   negativePromptPrefix: z.string().nullable().default(null),
   negativePromptSuffix: z.string().nullable().default(null),
+  maxTokensOverride: z.number().int().min(1).nullable().default(null),
 });
 
 export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;

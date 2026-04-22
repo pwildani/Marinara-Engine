@@ -531,6 +531,11 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: "negative_prompt_suffix",
     definition: "TEXT",
   },
+  {
+    table: "api_connections",
+    column: "max_tokens_override",
+    definition: "INTEGER",
+  },
 ];
 
 export async function runMigrations(db: DB) {
