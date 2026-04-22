@@ -107,6 +107,8 @@ export interface AssemblerInput {
   chatEmbedding?: number[] | null;
   /** Per-chat ephemeral state overrides for lorebook entries (from chat metadata). */
   entryStateOverrides?: Record<string, { ephemeral?: number | null; enabled?: boolean }>;
+  /** Locked {{pick}} outcomes from chat metadata (key → chosen index). */
+  macroPickValues?: Record<string, number>;
   /** When set, replaces individual character scenario fields with this group scenario. */
   groupScenarioOverrideText?: string | null;
 }
@@ -121,6 +123,8 @@ export interface AssemblerOutput {
   lorebookDepthEntriesCount: number;
   /** Updated per-chat entry state overrides after ephemeral processing. Caller should persist to chat metadata. */
   updatedEntryStateOverrides?: Record<string, { ephemeral?: number | null; enabled?: boolean }>;
+  /** Updated {{pick}} locked outcomes after this assembly. Caller should persist to chat metadata. */
+  updatedMacroPickValues?: Record<string, number>;
 }
 
 // ═══════════════════════════════════════════════
@@ -186,6 +190,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     char: charNames[0] || "Character",
     characters: charNames,
     variables: variableValues,
+    pickedValues: input.macroPickValues ? { ...input.macroPickValues } : undefined,
   };
 
   // Resolve macros inside variable values themselves (e.g. {{user}} in a choice value)
@@ -389,6 +394,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     ...(markerCtx.updatedEntryStateOverrides
       ? { updatedEntryStateOverrides: markerCtx.updatedEntryStateOverrides }
       : {}),
+    ...(macroCtx.pickedValues ? { updatedMacroPickValues: macroCtx.pickedValues } : {}),
   };
 }
 

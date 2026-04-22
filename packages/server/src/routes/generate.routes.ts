@@ -682,6 +682,7 @@ export async function generateRoutes(app: FastifyInstance) {
             entryStateOverrides:
               (chatMeta.entryStateOverrides as Record<string, { ephemeral?: number | null; enabled?: boolean }>) ??
               undefined,
+            macroPickValues: (chatMeta.macroPickValues as Record<string, number>) ?? undefined,
             groupScenarioOverrideText:
               typeof chatMeta.groupScenarioText === "string" && (chatMeta.groupScenarioText as string).trim()
                 ? (chatMeta.groupScenarioText as string).trim()
@@ -705,10 +706,18 @@ export async function generateRoutes(app: FastifyInstance) {
             : normalizeMaxContext(assembled.parameters.maxContext);
           effectiveMaxContext = minContextLimit(effectiveMaxContext, presetMaxContext);
 
-          // Persist updated per-chat entry state overrides (ephemeral countdown)
-          if (assembled.updatedEntryStateOverrides) {
-            chatMeta.entryStateOverrides = assembled.updatedEntryStateOverrides;
-            await chats.updateMetadata(input.chatId, chatMeta);
+          // Persist assembler-produced state updates in one write
+          {
+            let dirty = false;
+            if (assembled.updatedEntryStateOverrides) {
+              chatMeta.entryStateOverrides = assembled.updatedEntryStateOverrides;
+              dirty = true;
+            }
+            if (assembled.updatedMacroPickValues) {
+              chatMeta.macroPickValues = assembled.updatedMacroPickValues;
+              dirty = true;
+            }
+            if (dirty) await chats.updateMetadata(input.chatId, chatMeta);
           }
         }
       }

@@ -5,7 +5,7 @@ import { api } from "./api-client";
 import { useChatStore } from "../stores/chat.store";
 import { useUIStore } from "../stores/ui.store";
 import { toast } from "sonner";
-import { SUPPORTED_MACROS, type SceneCreateResponse, type ScenePlanResponse } from "@marinara-engine/shared";
+import { SUPPORTED_MACROS, pickKey, type SceneCreateResponse, type ScenePlanResponse } from "@marinara-engine/shared";
 
 export interface SlashCommand {
   name: string;
@@ -331,6 +331,33 @@ const COMMANDS: SlashCommand[] = [
         toast.dismiss(planToastId);
         return { handled: true, feedback: "Failed to create scene chat." };
       }
+    },
+  },
+  {
+    name: "reroll-pick",
+    aliases: ["reroll"],
+    description: "Clear locked {{pick}} outcomes so they re-roll on the next generation",
+    usage: "/reroll-pick [a::b::c]  — omit argument to clear all picks",
+    local: true,
+    async execute(args, ctx) {
+      const choices = args.trim();
+      if (choices) {
+        // Clear just the pick identified by this choices list
+        const key = pickKey(choices.split("::"));
+        const chat = await api.get<{ metadata: string | Record<string, unknown> }>(`/chats/${ctx.chatId}`);
+        const meta = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {});
+        const current = (meta.macroPickValues ?? {}) as Record<string, number>;
+        if (!(key in current)) {
+          return { handled: true, feedback: `No locked pick found for "${choices}".` };
+        }
+        const updated = { ...current };
+        delete updated[key];
+        await api.patch(`/chats/${ctx.chatId}/metadata`, { macroPickValues: updated });
+        return { handled: true, feedback: `Cleared pick for "${choices}". It will re-roll on the next generation.` };
+      }
+      // Clear all picks
+      await api.patch(`/chats/${ctx.chatId}/metadata`, { macroPickValues: {} });
+      return { handled: true, feedback: "All locked picks cleared. They will re-roll on the next generation." };
     },
   },
   {

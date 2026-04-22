@@ -17,6 +17,21 @@ export interface MacroContext {
   model?: string;
   /** Agent data keyed by agent type (for {{agent::TYPE}}) */
   agentData?: Record<string, string>;
+  /** Locked {{pick}} outcomes: key → chosen index. Mutated in-place when new picks are made. */
+  pickedValues?: Record<string, number>;
+}
+
+/**
+ * Stable non-cryptographic hash of a pick's choices list.
+ * Used as the storage key in macroPickValues / MacroContext.pickedValues.
+ */
+export function pickKey(choices: string[]): string {
+  const str = choices.join("::");
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (((h << 5) + h) ^ str.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
 }
 
 export interface SupportedMacroDefinition {
@@ -40,6 +55,11 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   { category: "Random", syntax: "{{random}}", description: "Random number from 0 to 100" },
   { category: "Random", syntax: "{{random:X:Y}}", description: "Random number between X and Y" },
   { category: "Random", syntax: "{{roll:XdY}}", description: "Dice roll total such as 2d6" },
+  {
+    category: "Random",
+    syntax: "{{pick::a::b::c}}",
+    description: "Pick one option at random and lock it for the rest of the conversation",
+  },
   { category: "Variables", syntax: "{{getvar::name}}", description: "Read a dynamic variable" },
   { category: "Variables", syntax: "{{setvar::name::value}}", description: "Set a dynamic variable" },
   { category: "Variables", syntax: "{{addvar::name::value}}", description: "Append to a dynamic variable" },
@@ -154,6 +174,22 @@ export function resolveMacros(template: string, ctx: MacroContext): string {
     let total = 0;
     for (let i = 0; i < n; i++) total += Math.floor(Math.random() * s) + 1;
     return String(total);
+  });
+
+  // ── Locked random pick: {{pick::a::b::c}} ──
+  // Each unique choices list gets one stable random selection per conversation.
+  // Any change to the choices (additions, removals, edits) produces a different key and re-picks.
+  result = result.replace(/\{\{pick::([\s\S]*?)\}\}/gi, (_, body) => {
+    const choices = (body as string).split("::");
+    if (choices.length === 0) return "";
+    const key = pickKey(choices);
+    if (!ctx.pickedValues) ctx.pickedValues = {};
+    let idx = ctx.pickedValues[key];
+    if (idx === undefined) {
+      idx = Math.floor(Math.random() * choices.length);
+      ctx.pickedValues[key] = idx;
+    }
+    return choices[idx] ?? "";
   });
 
   // ── Variable operations ──
