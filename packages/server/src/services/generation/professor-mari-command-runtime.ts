@@ -83,6 +83,8 @@ export async function handleProfessorMariCommand(args: {
   /** Embedding source + availability for the semantic fetch tier (#4768); already resolved by the caller. */
   embeddingSource?: MemoryRecallEmbeddingSource | null;
   vectorizerAvailable?: boolean;
+  /** Per-command result the caller replays to the model on its next turn. */
+  reportOutcome?: (outcome: { ok: boolean; message: string }) => void;
 }): Promise<{ handled: boolean; fetchSucceeded: boolean }> {
   if (!isProfessorMariCommandType(args.command.type)) return { handled: false, fetchSucceeded: false };
 
@@ -372,7 +374,10 @@ async function createLorebook(command: CreateLorebookCommand, args: Parameters<t
       generatedBy: "agent",
       sourceAgentId: PROFESSOR_MARI_ID,
     });
-    if (!created) return;
+    if (!created) {
+      args.reportOutcome?.({ ok: false, message: `create_lorebook failed: could not create "${command.name}".` });
+      return;
+    }
 
     const { folderIds, createdCount: folderCount } = await ensureLorebookFolderPaths(
       args.stores.lorebooksStore,
@@ -411,8 +416,16 @@ async function createLorebook(command: CreateLorebookCommand, args: Parameters<t
       created.id,
       entryCount,
     );
+    args.reportOutcome?.({
+      ok: true,
+      message: `create_lorebook: created lorebook "${command.name}" with ${entryCount} ${entryCount === 1 ? "entry" : "entries"}.`,
+    });
   } catch (err) {
     logger.error(err, "[commands] Create lorebook failed");
+    args.reportOutcome?.({
+      ok: false,
+      message: `create_lorebook failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 }
 
@@ -426,6 +439,10 @@ async function updateLorebook(command: UpdateLorebookCommand, args: Parameters<t
 
     if (!targetLorebook) {
       logger.warn('[commands] Update lorebook: "%s" not found', command.name);
+      args.reportOutcome?.({
+        ok: false,
+        message: `update_lorebook failed: lorebook "${command.name}" not found. Create it first with create_lorebook, or check the available lorebook names.`,
+      });
       return;
     }
 
@@ -523,8 +540,16 @@ async function updateLorebook(command: UpdateLorebookCommand, args: Parameters<t
       updatedEntryCount,
       createdEntryCount,
     );
+    args.reportOutcome?.({
+      ok: true,
+      message: `update_lorebook: updated lorebook "${finalName}" (entries updated=${updatedEntryCount}, created=${createdEntryCount}).`,
+    });
   } catch (err) {
     logger.error(err, "[commands] Update lorebook failed");
+    args.reportOutcome?.({
+      ok: false,
+      message: `update_lorebook failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 }
 

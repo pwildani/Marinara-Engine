@@ -770,6 +770,14 @@ function replaceConversationContextMacro(
   return replaced;
 }
 
+/**
+ * Command-shaped text left in a visible message. A correctly-formed command is
+ * stripped by parseCharacterCommands, so a surviving `verb: key="` token means the
+ * model wrote something that never parsed.
+ */
+const MALFORMED_COMMAND_RE =
+  /(create_lorebook|update_lorebook|create_persona|update_persona|create_character|update_character|create_chat|create_preset)\s*:\s*[a-zA-Z_]+\s*=\s*"/g;
+
 export async function generateRoutes(app: FastifyInstance) {
   const isDebug = logger.isLevelEnabled("debug");
 
@@ -3046,6 +3054,37 @@ export async function generateRoutes(app: FastifyInstance) {
           conversationImportantMemoryBlock = preparedHistory.importantMemoryBlock;
           if (conversationImportantMemoryBlock && !conversationContextMacroSlots.memories) {
             conversationSystemPrompt += "\n\n" + preparedHistory.importantMemoryBlock;
+          }
+
+          // Replay the previous turn's command results. Commands are stripped from
+          // the assistant's visible message, so this is its only signal that one
+          // actually ran rather than being silently dropped.
+          {
+            const successes = chatMeta.mariCommandSuccesses as string[] | undefined;
+            const errors = chatMeta.mariCommandErrors as string[] | undefined;
+            if (successes?.length) {
+              conversationSystemPrompt +=
+                "\n\n<command_results>\nThe following commands in your last message SUCCEEDED. They are stripped from your visible message, so this confirmation is your only signal that they ran — do NOT re-issue them or change their syntax:\n" +
+                successes.map((entry) => `- ${entry}`).join("\n") +
+                "\n</command_results>";
+            }
+            if (errors?.length) {
+              conversationSystemPrompt +=
+                "\n\n<command_errors>\nThe following commands in your last message FAILED and must be corrected:\n" +
+                errors.map((entry) => `- ${entry}`).join("\n") +
+                "\nPlease fix these errors in your next response.\n</command_errors>";
+            }
+            if (successes?.length || errors?.length) {
+              try {
+                const freshChat = await chats.getById(input.chatId);
+                const freshMeta = parseExtra(freshChat?.metadata) as Record<string, unknown>;
+                freshMeta.mariCommandSuccesses = undefined;
+                freshMeta.mariCommandErrors = undefined;
+                await chats.updateMetadata(input.chatId, freshMeta);
+              } catch {
+                // Non-critical — worst case the hint repeats on the next turn.
+              }
+            }
           }
 
           conversationSystemPrompt = resolvePromptMacros(conversationSystemPrompt);
@@ -10350,6 +10389,10 @@ export async function generateRoutes(app: FastifyInstance) {
             reactChatMembersCache = members;
             return members;
           };
+          // Per-command results, replayed into the next turn's prompt (see the
+          // <command_results> injection above).
+          const commandSuccesses: string[] = [];
+          const commandErrors: string[] = [];
           try {
             for (const { command, characterId, messageId, swipeIndex } of collectedCommands) {
               try {
@@ -10536,15 +10579,55 @@ export async function generateRoutes(app: FastifyInstance) {
                   sendAssistantAction: (data) => {
                     sendSseEvent(reply, { type: "assistant_action", data });
                   },
+                  reportOutcome: (outcome) => {
+                    (outcome.ok ? commandSuccesses : commandErrors).push(outcome.message);
+                  },
                 });
                 if (professorMariResult.fetchSucceeded) {
                   mariFetchSucceededThisIteration = true;
                 }
               } catch (cmdErr) {
                 logger.error(cmdErr, `[commands] Error processing ${command.type} command`);
+                commandErrors.push(
+                  `${command.type} failed: ${cmdErr instanceof Error ? cmdErr.message : String(cmdErr)}`,
+                );
               }
             }
           } finally {
+            // Command-shaped text that survived into the visible message never
+            // parsed — a well-formed command is stripped by parseCharacterCommands.
+            // Usually the model used (parentheses) or a code fence. Surface a
+            // correction so it does not silently repeat the mistake.
+            if (!input.impersonate) {
+              const visibleText = allResponses.join("\n\n");
+              const malformedVerbs = new Set<string>();
+              for (const match of visibleText.matchAll(MALFORMED_COMMAND_RE)) {
+                malformedVerbs.add(match[1]!);
+              }
+              for (const verb of malformedVerbs) {
+                commandErrors.push(
+                  `${verb}: your last message contained "${verb}: ..." text that did NOT register as a command, so it had no effect. Re-issue it using a supported syntax — either [${verb}: key="value", ...] or <${verb}>{ ...JSON... }</${verb}> — not parentheses, not inside a code fence, and not described in prose.`,
+                );
+              }
+            }
+            // Only Conversation mode replays these into the next prompt; persisting
+            // them elsewhere would leave metadata nothing ever reads or clears.
+            if (chatMode === "conversation" && (commandSuccesses.length > 0 || commandErrors.length > 0)) {
+              try {
+                const freshChat = await chats.getById(input.chatId);
+                const freshMeta = parseExtra(freshChat?.metadata) as Record<string, unknown>;
+                freshMeta.mariCommandSuccesses = commandSuccesses.length > 0 ? commandSuccesses : undefined;
+                freshMeta.mariCommandErrors = commandErrors.length > 0 ? commandErrors : undefined;
+                await chats.updateMetadata(input.chatId, freshMeta);
+                logger.debug(
+                  "[commands] Saved %d success(es) and %d error(s) for the next turn",
+                  commandSuccesses.length,
+                  commandErrors.length,
+                );
+              } catch {
+                // Non-critical — the model simply does not get the feedback.
+              }
+            }
             sendSseEvent(reply, {
               type: "assistant_commands_end",
               data: {},
