@@ -1555,6 +1555,12 @@ export async function generateRoutes(app: FastifyInstance) {
       );
 
       const isGoogleProvider = conn.provider === "google" || conn.provider === "google_vertex";
+      // llama.cpp-backed endpoints reject a request whose conversation ends on an
+      // assistant turn while thinking is active — the same structural constraint
+      // Google has. Any OpenAI-compatible endpoint that is not OpenAI's own cloud
+      // is assumed to be one of these.
+      const isNonCloudOpenAICompatible =
+        conn.provider === "custom" || (conn.provider === "openai" && !baseUrl.includes("openai.com"));
       const persistPromptAttachmentCaptions = async (
         messageId: string | null,
         updatedAttachments: PromptAttachment[] | null,
@@ -5547,6 +5553,7 @@ export async function generateRoutes(app: FastifyInstance) {
           finalMessages.push({ role: "user", content: impersonateInstruction });
         }
 
+        const rejectsPrefillWithThinking = isNonCloudOpenAICompatible && enableThinking;
         const tailMessages = appendGenerationTailMessages(finalMessages, {
           assistantPrefill,
           assistantReasoningPrefill,
@@ -5554,16 +5561,40 @@ export async function generateRoutes(app: FastifyInstance) {
           followUpIteration,
           impersonate: input.impersonate,
           isGoogleProvider,
+          rejectsPrefillWithThinking,
           regenerateUserMessage,
         });
         if (tailMessages.assistantPrefillInjected) {
-          const prefillPosition = tailMessages.googleUserRegenerationInjected
+          const prefillPosition = tailMessages.userRegenerationInjected
             ? "before final user message"
             : "as final assistant message";
           logger.debug("[generate] Injected assistant prefill (%d chars) %s", assistantPrefill.length, prefillPosition);
         }
-        if (tailMessages.googleUserRegenerationInjected && assistantPrefill.trim()) {
-          logger.debug("[generate] Preserved assistant prefill before Gemini user-message regeneration instruction");
+        if (tailMessages.userRegenerationInjected && assistantPrefill.trim()) {
+          logger.debug("[generate] Preserved assistant prefill before user-message regeneration instruction");
+        }
+
+        // Same llama.cpp constraint, but for the case with no explicit prefill:
+        // roleplay chats can invert roles (the human's lines carry the assistant
+        // role, the narration the user role), which leaves the conversation ending
+        // on an assistant turn. Flip every non-system role and prepend an empty user
+        // message, giving [system, user(""), assistant(narration), user(human)] — it
+        // ends on a user turn, so the model still generates the next narration turn.
+        const lastFinalRole = finalMessages[finalMessages.length - 1]?.role;
+        if (rejectsPrefillWithThinking && lastFinalRole === "assistant" && !assistantPrefill.trim()) {
+          const systemMessages = finalMessages.filter((message) => message.role === "system");
+          const nonSystemMessages = finalMessages
+            .filter((message) => message.role !== "system")
+            .map((message) => ({
+              ...message,
+              role: message.role === "user" ? ("assistant" as const) : ("user" as const),
+            }));
+          finalMessages.length = 0;
+          finalMessages.push(...systemMessages, { role: "user", content: "" }, ...nonSystemMessages);
+          logger.debug(
+            "[generate] Flipped non-system roles and prepended an empty user message for non-cloud thinking compatibility (new tail role: %s)",
+            finalMessages[finalMessages.length - 1]?.role,
+          );
         }
 
         let fullResponse = "";
@@ -6316,11 +6347,7 @@ export async function generateRoutes(app: FastifyInstance) {
           generationStartedAt = null;
           reasoningDurationMs = null;
           receivedThinking = false;
-          if (
-            tailMessages.assistantPrefillInjected &&
-            !tailMessages.googleUserRegenerationInjected &&
-            assistantPrefill
-          ) {
+          if (tailMessages.assistantPrefillInjected && !tailMessages.userRegenerationInjected && assistantPrefill) {
             await writeContentChunked(assistantPrefill);
           }
           let geminiResponseParts: unknown[] | null = null;

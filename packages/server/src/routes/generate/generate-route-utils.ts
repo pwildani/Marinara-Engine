@@ -981,15 +981,22 @@ export function appendGenerationTailMessages(
     followUpIteration: number;
     impersonate: boolean;
     isGoogleProvider: boolean;
+    /** llama.cpp-backed endpoints also reject a prefill while thinking is active; treat like Google. */
+    rejectsPrefillWithThinking?: boolean;
     regenerateUserMessage: SimpleMessage | null;
   },
-): { assistantPrefillInjected: boolean; googleUserRegenerationInjected: boolean } {
+): { assistantPrefillInjected: boolean; userRegenerationInjected: boolean } {
   if (options.followUpIteration !== 0) {
-    return { assistantPrefillInjected: false, googleUserRegenerationInjected: false };
+    return { assistantPrefillInjected: false, userRegenerationInjected: false };
   }
 
-  const shouldAppendGoogleUserRegeneration =
-    !options.impersonate && options.isGoogleProvider && !!options.regenerateUserMessage;
+  // Append the user regeneration message after the assistant prefill whenever the
+  // provider cannot handle a conversation that ends on an assistant turn. Google
+  // always needs this; llama.cpp-backed endpoints need it while thinking is on.
+  const shouldAppendUserRegeneration =
+    !options.impersonate &&
+    (options.isGoogleProvider || !!options.rejectsPrefillWithThinking) &&
+    !!options.regenerateUserMessage;
   const assistantPrefill = options.assistantPrefill.trim();
   const shouldAppendAssistantPrefill = !options.impersonate && !!assistantPrefill;
   const assistantReasoningPrefill = options.assistantReasoningPrefill.trim();
@@ -1017,13 +1024,13 @@ export function appendGenerationTailMessages(
     });
   }
 
-  if (shouldAppendGoogleUserRegeneration) {
+  if (shouldAppendUserRegeneration) {
     messages.push(options.regenerateUserMessage!);
   }
 
   return {
     assistantPrefillInjected: shouldAppendAssistantPrefill,
-    googleUserRegenerationInjected: shouldAppendGoogleUserRegeneration,
+    userRegenerationInjected: shouldAppendUserRegeneration,
   };
 }
 
