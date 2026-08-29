@@ -16,6 +16,7 @@ import {
   DeviceOutputValueConstructor,
   OutputType,
 } from "buttplug";
+import type { ButtplugMessage } from "buttplug";
 import type {
   HapticDevice,
   HapticCapability,
@@ -26,6 +27,23 @@ import type {
 import { normalizeHapticAction, normalizeHapticPattern } from "@marinara-engine/shared";
 import { getIntifaceUrl } from "../../config/runtime-config.js";
 import { buildHapticPatternSteps, describeHapticDeviceType } from "../generation/haptic-runtime.js";
+
+/**
+ * Captures the ServerInfo handshake so the UI can show which Intiface server it
+ * reached ("Intiface Central", a custom bridge, …) instead of just the URL —
+ * useful when the same URL is proxied to different backends.
+ */
+class CapturingButtplugClient extends ButtplugClient {
+  remoteServerName: string | null = null;
+
+  protected override async sendMessage(msg: ButtplugMessage): Promise<ButtplugMessage> {
+    const response = await super.sendMessage(msg);
+    if (response.ServerInfo !== undefined) {
+      this.remoteServerName = response.ServerInfo.ServerName ?? null;
+    }
+    return response;
+  }
+}
 
 const POSITION_WITH_DURATION_OUTPUT =
   (OutputType as unknown as Record<string, OutputType | undefined>).HwPositionWithDuration ??
@@ -93,14 +111,14 @@ function deviceToDTO(device: ButtplugClientDevice): HapticDevice {
 }
 
 class ButtplugService {
-  private client: ButtplugClient;
+  private client: CapturingButtplugClient;
   private serverUrl: string | null = null;
   private preferredServerUrl: string | null = null;
   private stopTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private patternTimerCounter = 0;
 
   constructor() {
-    this.client = new ButtplugClient("Marinara Engine");
+    this.client = new CapturingButtplugClient("Marinara Engine");
 
     // Track device events
     this.client.addListener("deviceadded", (device: ButtplugClientDevice) => {
@@ -112,6 +130,7 @@ class ButtplugService {
     this.client.addListener("serverdisconnect", () => {
       logger.info("[haptic] Disconnected from Intiface Central");
       this.serverUrl = null;
+      this.client.remoteServerName = null;
     });
   }
 
@@ -134,6 +153,7 @@ class ButtplugService {
       connected: this.connected,
       serverUrl: this.serverUrl,
       defaultServerUrl: this.preferredServerUrl ?? getIntifaceUrl(),
+      serverName: this.client.remoteServerName,
       scanning: this.scanning,
       devices: this.devices,
     };

@@ -40,6 +40,8 @@ export interface HapticStatus {
   serverUrl: string | null;
   /** Server-side default URL used when the client does not provide one. */
   defaultServerUrl?: string;
+  /** Name the connected server reported in its ServerInfo handshake, when connected. */
+  serverName: string | null;
   scanning: boolean;
   devices: HapticDevice[];
 }

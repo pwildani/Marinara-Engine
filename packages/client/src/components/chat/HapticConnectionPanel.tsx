@@ -65,6 +65,9 @@ export function HapticConnectionPanel({
   const scanning = status?.scanning ?? false;
   const defaultServerUrl = status?.defaultServerUrl ?? "ws://127.0.0.1:12345";
   const activeServerUrl = status?.serverUrl ?? defaultServerUrl;
+  // Prefer the name the server reported over the raw URL — more recognizable when
+  // the URL is a proxy or a LAN address.
+  const connectedLabel = status?.serverName ?? activeServerUrl;
 
   return (
     <div className="space-y-1.5 px-1">
@@ -105,7 +108,7 @@ export function HapticConnectionPanel({
                   value1: intifaceUrl.trim() || defaultServerUrl,
                 })
               : connected
-                ? localizeUi("ui.chat.hapticconnectionpanel.connectedValue1", { value1: activeServerUrl })
+                ? localizeUi("ui.chat.hapticconnectionpanel.connectedValue1", { value1: connectedLabel })
                 : localizeUi("ui.chat.hapticconnectionpanel.notConnected")}
           </span>
         </div>
