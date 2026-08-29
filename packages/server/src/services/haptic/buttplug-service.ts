@@ -43,6 +43,19 @@ class CapturingButtplugClient extends ButtplugClient {
     }
     return response;
   }
+
+  async refreshDeviceList(): Promise<void> {
+    try {
+      await this.requestDeviceList();
+    } catch (err) {
+      // buttplug v4 against Intiface v5: ParseIncomingMessages chokes on the
+      // DeviceList response envelope. The deviceadded/deviceremoved events still
+      // fire correctly, so the refresh has done its job and this is safe to drop.
+      if (!(err instanceof TypeError && String(err).includes("not iterable"))) {
+        throw err;
+      }
+    }
+  }
 }
 
 const POSITION_WITH_DURATION_OUTPUT =
@@ -110,12 +123,16 @@ function deviceToDTO(device: ButtplugClientDevice): HapticDevice {
   };
 }
 
+/** Devices attached outside a scan (already paired at connect time) only surface on a list refresh. */
+const DEVICE_POLL_INTERVAL_MS = 15_000;
+
 class ButtplugService {
   private client: CapturingButtplugClient;
   private serverUrl: string | null = null;
   private preferredServerUrl: string | null = null;
   private stopTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private patternTimerCounter = 0;
+  private devicePollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.client = new CapturingButtplugClient("Marinara Engine");
@@ -129,6 +146,7 @@ class ButtplugService {
     });
     this.client.addListener("serverdisconnect", () => {
       logger.info("[haptic] Disconnected from Intiface Central");
+      this.stopDevicePoll();
       this.serverUrl = null;
       this.client.remoteServerName = null;
     });
@@ -169,11 +187,19 @@ class ButtplugService {
     this.serverUrl = target;
     if (requestedUrl) this.preferredServerUrl = requestedUrl;
     logger.info(`[haptic] Connected to Intiface Central at ${target}`);
+    await this.client.refreshDeviceList();
+    this.devicePollTimer = setInterval(() => {
+      if (!this.client.connected) return;
+      void this.client.refreshDeviceList().catch((err) => {
+        logger.warn(err, "[haptic] Device list refresh failed");
+      });
+    }, DEVICE_POLL_INTERVAL_MS);
   }
 
   /** Disconnect from Intiface Central. */
   async disconnect(): Promise<void> {
     if (!this.client.connected) return;
+    this.stopDevicePoll();
     this.clearAllTimers();
     await this.client.disconnect();
     this.serverUrl = null;
@@ -297,6 +323,13 @@ class ButtplugService {
     if (deviceIndex === "all") return all;
     const device = this.client.devices.get(deviceIndex);
     return device ? [device] : []; // return empty if index not found
+  }
+
+  private stopDevicePoll(): void {
+    if (this.devicePollTimer !== null) {
+      clearInterval(this.devicePollTimer);
+      this.devicePollTimer = null;
+    }
   }
 
   private async executePatternCommand(cmd: HapticDeviceCommand, pattern: HapticFeedbackPattern): Promise<void> {
