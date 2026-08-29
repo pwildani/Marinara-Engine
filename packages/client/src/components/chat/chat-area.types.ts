@@ -66,6 +66,8 @@ export type PeekPromptData = {
     durationMs?: number | null;
     finishReason?: string | null;
   } | null;
+  /** Lorebook entries the cached turn actually activated, when a cached scan exists. */
+  lorebookEntries?: Array<{ id: string; name: string }> | null;
   agentNote?: string;
 };
 

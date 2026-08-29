@@ -869,6 +869,12 @@ export interface GenerationInfo {
   /** Time from generation start until reasoning yielded to visible output. */
   reasoningDurationMs?: number | null;
   finishReason: string | null;
+  /** Per-chat ephemeral entry state as it stood *before* this generation, replayed when it is regenerated. */
+  preGenEntryStateOverrides?: Record<string, { ephemeral?: number | null; enabled?: boolean }> | null;
+  /** Per-chat ephemeral entry state left *after* this generation, restored when this swipe is selected. */
+  postGenEntryStateOverrides?: Record<string, { ephemeral?: number | null; enabled?: boolean }> | null;
+  /** Per-chat sticky/cooldown/delay timing state left after this generation, restored alongside postGenEntryStateOverrides. */
+  postGenEntryTimingStates?: Record<string, import("./lorebook.js").LorebookEntryTimingState> | null;
 }
 
 /** A swipe (alternate response) for a message. */

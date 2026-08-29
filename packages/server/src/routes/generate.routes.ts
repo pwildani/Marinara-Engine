@@ -1461,6 +1461,29 @@ export async function generateRoutes(app: FastifyInstance) {
         return row ? (parseGameStateRow(row as Record<string, unknown>) as unknown as Record<string, unknown>) : null;
       };
 
+      // ── Regen: replay the pre-generation ephemeral lorebook state ──
+      // The original generation persisted its post-generation state to chatMeta, so
+      // without this an ephemeral entry consumed back then reads as spent and never
+      // fires on the regenerated swipe.
+      if (input.regenerateMessageId && regenMsg) {
+        const readGenerationInfo = (extra: unknown): Record<string, unknown> | null => {
+          const record = parseExtra(extra) as Record<string, unknown>;
+          const info = record.generationInfo;
+          return info && typeof info === "object" && !Array.isArray(info) ? (info as Record<string, unknown>) : null;
+        };
+        let regenGenInfo = readGenerationInfo(regenMsg.extra);
+        // generationInfo lives on the active swipe once a message has been swiped.
+        if (regenGenInfo?.preGenEntryStateOverrides == null && regenMsg.id) {
+          const regenSwipes = await chats.getSwipes(regenMsg.id);
+          const activeSwipe =
+            regenSwipes.find((swipe: any) => swipe.index === regenMsg.activeSwipeIndex) ?? regenSwipes[0];
+          if (activeSwipe) regenGenInfo = readGenerationInfo(activeSwipe.extra) ?? regenGenInfo;
+        }
+        if (regenGenInfo?.preGenEntryStateOverrides != null) {
+          chatMeta.entryStateOverrides = regenGenInfo.preGenEntryStateOverrides;
+        }
+      }
+
       // ── Context message limit (from chat metadata, off by default) ──
       const lorebookKeeperSettings = getLorebookKeeperSettings(chatMeta);
       const contextMessageLimit = chatMeta.contextMessageLimit as number | null;
@@ -2012,6 +2035,12 @@ export async function generateRoutes(app: FastifyInstance) {
       let runningMessagesForFollowUp: GenerationPromptMessage[] = [...mappedMessages];
       let followUpIteration = 0;
       const MAX_FOLLOW_UP_ITERATIONS = 2;
+      // Ephemeral lorebook state as it stands before this generation consumes any of
+      // it. Recorded on the resulting swipe so a later regen can replay it.
+      const preGenEntryStateOverrides =
+        (chatMeta.entryStateOverrides as
+          | Record<string, { ephemeral?: number | null; enabled?: boolean }>
+          | undefined) ?? null;
       const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
       let persistedMacroVariables = JSON.stringify(chatMacroVariables);
       let persistedMacroVariableSnapshot = { ...chatMacroVariables };
@@ -7519,6 +7548,17 @@ export async function generateRoutes(app: FastifyInstance) {
                 durationMs,
                 reasoningDurationMs,
                 finishReason: finishReason ?? null,
+                // Lorebook ephemeral/timing state on either side of this generation, so
+                // switching swipes or regenerating replays the state that swipe ran with
+                // instead of whatever the most recent generation happened to leave behind.
+                preGenEntryStateOverrides,
+                postGenEntryStateOverrides:
+                  (chatMeta.entryStateOverrides as Record<
+                    string,
+                    { ephemeral?: number | null; enabled?: boolean }
+                  > | null) ?? null,
+                postGenEntryTimingStates:
+                  (chatMeta.entryTimingStates as Record<string, LorebookEntryTimingState> | null) ?? null,
               },
             };
             if (fullThinking) extraUpdate.thinking = fullThinking;

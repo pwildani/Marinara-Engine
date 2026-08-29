@@ -2465,10 +2465,27 @@ export async function chatsRoutes(app: FastifyInstance) {
     const visibleGameStateAnchor = resolveVisibleGameStateAnchor(chatMessages);
     const supportsHiddenFromAI = chatMode === "conversation" || chatMode === "roleplay";
 
+    // Lorebook entries this turn actually activated, from the scan cached alongside
+    // the prompt. Lets Peek Prompt report the selected turn instead of the live
+    // Active Context panel, which only ever reflects the latest generation.
+    const readCachedLorebookEntries = (extra: Record<string, unknown>): Array<{ id: string; name: string }> | null => {
+      const scan = extra.lorebookScan;
+      if (!isRecord(scan) || !Array.isArray(scan.activatedEntries)) return null;
+      const entries = scan.activatedEntries
+        .filter(isRecord)
+        .filter((entry) => typeof entry.id === "string" && typeof entry.name === "string")
+        .map((entry) => ({ id: entry.id as string, name: entry.name as string }));
+      return entries.length > 0 ? entries : null;
+    };
+
     const readCachedPrompt = (
       extra: Record<string, unknown>,
       allowHistoricalCache = false,
-    ): { messages: Array<{ role: string; content: string }>; generationInfo?: Record<string, unknown> } | null => {
+    ): {
+      messages: Array<{ role: string; content: string }>;
+      generationInfo?: Record<string, unknown>;
+      lorebookEntries?: Array<{ id: string; name: string }> | null;
+    } | null => {
       const cachedPrompt = Array.isArray(extra.cachedPrompt)
         ? extra.cachedPrompt
             .map((entry) => {
@@ -2495,6 +2512,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       return {
         messages: cachedPrompt,
         generationInfo: isRecord(extra.generationInfo) ? extra.generationInfo : undefined,
+        lorebookEntries: readCachedLorebookEntries(extra),
       };
     };
 
@@ -2541,6 +2559,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           source: "cached",
           exact: true,
           generationInfo: cached.generationInfo ?? null,
+          lorebookEntries: cached.lorebookEntries ?? null,
           agentNote: requestedMessage
             ? "This is the exact cached text prompt sent for the selected turn."
             : "This is the cached text prompt saved after provider preparation for the active assistant swipe.",
@@ -3256,7 +3275,44 @@ export async function chatsRoutes(app: FastifyInstance) {
     "/:chatId/messages/:messageId/active-swipe",
     async (req) => {
       const { index } = req.body as { index: number };
-      return storage.setActiveSwipe(req.params.messageId, index);
+      const result = await storage.setActiveSwipe(req.params.messageId, index);
+
+      // Restore the selected swipe's post-generation lorebook state (ephemeral
+      // budgets, sticky/cooldown timers) so an abandoned swipe does not leave its
+      // consumption behind. Only safe on the latest visible assistant message —
+      // for older messages, later generations have consumed state on top.
+      try {
+        const chat = await storage.getById(req.params.chatId);
+        if (chat) {
+          const chatMode = (chat.mode as string) ?? "roleplay";
+          const supportsHidden = chatMode === "conversation" || chatMode === "roleplay";
+          const messages = await storage.listMessages(req.params.chatId);
+          let latestVisible: (typeof messages)[number] | null = null;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const message = messages[i]!;
+            if (supportsHidden && isMessageHiddenFromAI(message)) continue;
+            latestVisible = message;
+            break;
+          }
+          if (latestVisible?.id === req.params.messageId && latestVisible.role === "assistant") {
+            const swipes = await storage.getSwipes(req.params.messageId);
+            const selected = swipes.find((swipe: { index: number }) => swipe.index === index);
+            const genInfo = selected ? parseExtra(selected.extra).generationInfo : null;
+            if (isRecord(genInfo) && (genInfo.postGenEntryStateOverrides || genInfo.postGenEntryTimingStates)) {
+              const meta = (
+                typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})
+              ) as Record<string, unknown>;
+              if (genInfo.postGenEntryStateOverrides) meta.entryStateOverrides = genInfo.postGenEntryStateOverrides;
+              if (genInfo.postGenEntryTimingStates) meta.entryTimingStates = genInfo.postGenEntryTimingStates;
+              await storage.updateMetadata(req.params.chatId, meta);
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn(error, "[active-swipe] Failed to restore lorebook state for the selected swipe");
+      }
+
+      return result;
     },
   );
 

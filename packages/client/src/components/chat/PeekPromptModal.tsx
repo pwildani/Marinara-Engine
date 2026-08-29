@@ -51,6 +51,8 @@ interface PeekPromptModalProps {
     source?: "cached" | "live_preview" | "raw_messages";
     exact?: boolean;
     generationInfo?: GenerationInfo | null;
+    /** Lorebook entries the cached turn actually activated, when a cached scan exists. */
+    lorebookEntries?: Array<{ id: string; name: string }> | null;
     agentNote?: string;
   };
   onClose: () => void;
@@ -627,6 +629,21 @@ export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
                     >
                       <span className="text-[var(--muted-foreground)]">{p.label}</span>
                       <span className="font-medium text-[var(--foreground)]">{p.value}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {data.lorebookEntries && data.lorebookEntries.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                    {localizeUi("ui.chat.peekpromptmodal.lorebook")}
+                  </span>
+                  {data.lorebookEntries.map((entry) => (
+                    <span
+                      key={entry.id}
+                      className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[0.625rem] text-emerald-400"
+                    >
+                      {entry.name}
                     </span>
                   ))}
                 </div>

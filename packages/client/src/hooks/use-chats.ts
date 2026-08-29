@@ -1335,6 +1335,7 @@ export function usePeekPrompt() {
           durationMs?: number | null;
           finishReason?: string | null;
         } | null;
+        lorebookEntries?: Array<{ id: string; name: string }> | null;
         agentNote?: string;
       }>(`/chats/${chatId}/peek-prompt`, messageId ? { messageId } : {});
     },
