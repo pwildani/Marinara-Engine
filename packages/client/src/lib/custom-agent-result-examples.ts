@@ -147,7 +147,11 @@ export const CUSTOM_AGENT_RESULT_EXAMPLES: Record<CustomAgentResultType, CustomA
     css: ".chat-surface { filter: saturate(1.1); }",
     durationMs: 60000,
   }),
-  background_change: jsonExample({ chosen: "exact-background-filename.ext or null" }),
+  background_change: jsonExample({
+    chosen: "exact-background-filename.ext or null",
+    needsGeneration: "true only when nothing fits and <background_generation_enabled> is true",
+    generationHint: "location, lighting, mood, atmosphere — no characters",
+  }),
   sprite_change: jsonExample({
     expressions: [
       {
