@@ -47,26 +47,26 @@ FROM node:24-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b2
 WORKDIR /app
 
 # Trixie packages only Python 3.13, but install-backgroundremover.mjs pins
-# numba/llvmlite to versions whose wheels stop at cp312. Bring in the official
-# 3.12 build, which lives under /usr/local and so never shadows the system
-# python3. The same runtime is copied into the production stage below, so the
-# venv's interpreter is present at run time.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      libffi8 \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=python:3.12-slim-trixie /usr/local/bin/python3.12 /usr/local/bin/python3.12
-COPY --from=python:3.12-slim-trixie /usr/local/lib/libpython3.12.so.1.0 /usr/local/lib/
-COPY --from=python:3.12-slim-trixie /usr/local/lib/python3.12 /usr/local/lib/python3.12
-RUN ldconfig
+# numba/llvmlite to versions whose wheels stop at cp312, and that pin is shared
+# with the macOS/Windows install path. uv manages its own relocatable CPython
+# builds, so it can supply 3.12 without grafting another distro's interpreter
+# into this image: no cross-image /usr/local copy, no ldconfig, and no extra
+# shared libraries (the build statically links libffi and OpenSSL). Same uv
+# release the MLX sidecar runtime pins, in
+# packages/server/src/services/sidecar/runtime-integrity-manifest.ts.
+COPY --from=ghcr.io/astral-sh/uv:0.12.0@sha256:606e70c71c852d03f611b1e56a195d08648507018a7057fab82c4974c4eae105 /uv /usr/local/bin/uv
+ENV UV_PYTHON_INSTALL_DIR=/opt/marinara/python
+RUN uv python install --no-bin 3.12
 
 COPY scripts/install-backgroundremover.mjs scripts/install-backgroundremover.mjs
 
 # Install the venv + models under a stable path outside the /app/data volume, so
 # they survive a volume mount and need no per-launch install. DATA_DIR drives
-# where the script writes (<DATA_DIR>/background-remover/.venv).
+# where the script writes (<DATA_DIR>/background-remover/.venv). PYTHON points
+# the script at the managed interpreter, which the venv then records by absolute
+# path — hence the matching path in the production stage.
 ENV DATA_DIR=/opt/marinara
-ENV PYTHON=/usr/local/bin/python3.12
-RUN node scripts/install-backgroundremover.mjs
+RUN PYTHON="$(uv python find --managed-python 3.12)" node scripts/install-backgroundremover.mjs
 
 # ── Stage 2: Production ──
 FROM node:24-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d AS production
@@ -80,7 +80,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       bubblewrap \
       python3 \
       python3-venv \
-      libffi8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace config
@@ -115,12 +114,10 @@ COPY scripts/protect-launcher-data.mjs scripts/protect-launcher-data.mjs
 COPY README.md README.md
 COPY docs/ docs/
 
-# The pre-built background-remover venv, plus the Python 3.12 runtime its
-# interpreter symlink points at (see the backgroundremover stage for why 3.12).
-COPY --from=python:3.12-slim-trixie /usr/local/bin/python3.12 /usr/local/bin/python3.12
-COPY --from=python:3.12-slim-trixie /usr/local/lib/libpython3.12.so.1.0 /usr/local/lib/
-COPY --from=python:3.12-slim-trixie /usr/local/lib/python3.12 /usr/local/lib/python3.12
-RUN ldconfig
+# The pre-built background-remover venv, plus the uv-managed Python 3.12 the
+# venv points back at (see the backgroundremover stage for why 3.12). Both keep
+# the paths they had in that stage, which is what makes the venv portable here.
+COPY --from=backgroundremover /opt/marinara/python /opt/marinara/python
 COPY --from=backgroundremover --chown=node:node /opt/marinara/background-remover /opt/marinara/background-remover
 
 # Ensure /app/data exists for runtime use (file storage, uploads, generated assets)
