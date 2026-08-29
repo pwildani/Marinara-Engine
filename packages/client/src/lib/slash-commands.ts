@@ -15,6 +15,7 @@ import {
   buildGuidedGenerationInstructionMessage,
   buildNarratorInstructionMessage,
   normalizeTextForMatch,
+  pickKey,
 } from "@marinara-engine/shared";
 
 export interface SlashCommand {
@@ -610,6 +611,37 @@ function readHiddenFromAICharacterIds(extra: unknown): string[] {
 // ── Command definitions ────────────────
 
 const COMMANDS: SlashCommand[] = [
+  {
+    name: "reroll-pick",
+    aliases: ["reroll"],
+    description: "Clear locked {{pick}} outcomes so they re-roll on the next generation",
+    usage: "/reroll-pick [a::b::c]  — omit the argument to clear every pick",
+    local: true,
+    async execute(args, ctx) {
+      const choices = args.trim();
+      if (!choices) {
+        await api.patch(`/chats/${ctx.chatId}/metadata`, { macroPickValues: {} });
+        return { handled: true, feedback: "All locked picks cleared. They re-roll on the next generation." };
+      }
+      const key = pickKey(
+        choices
+          .split("::")
+          .map((choice) => choice.trim())
+          .filter(Boolean),
+      );
+      const chat = await api.get<{ metadata: string | Record<string, unknown> | null }>(`/chats/${ctx.chatId}`);
+      const meta = (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})) as Record<
+        string,
+        unknown
+      >;
+      const current = (meta.macroPickValues ?? {}) as Record<string, number>;
+      if (!(key in current)) return { handled: true, feedback: `No locked pick found for "${choices}".` };
+      const updated = { ...current };
+      delete updated[key];
+      await api.patch(`/chats/${ctx.chatId}/metadata`, { macroPickValues: updated });
+      return { handled: true, feedback: `Cleared pick for "${choices}". It re-rolls on the next generation.` };
+    },
+  },
   {
     name: "help",
     description: "Show available slash commands",

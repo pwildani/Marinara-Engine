@@ -80,6 +80,8 @@ export interface MacroContext {
     personaAbout?: string;
     convoBehavior?: string;
   };
+  /** Locked {{pick}} outcomes: choices-hash → chosen index. Mutated in place as new picks are made. */
+  pickedValues?: Record<string, number>;
 }
 
 export interface ResolveMacroOptions {
@@ -300,6 +302,19 @@ function randomInteger(options: ResolveMacroOptions, original: string, min: numb
   return Math.floor(randomUnit(options, original) * (max - min + 1)) + min;
 }
 
+/**
+ * Stable non-cryptographic hash of a {{pick}} choices list.
+ * Used as the storage key in MacroContext.pickedValues and chat metadata's macroPickValues.
+ */
+export function pickKey(choices: string[]): string {
+  const str = choices.join("::");
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (((h << 5) + h) ^ str.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
 export function hasDeferredCharacterMacros(template: string): boolean {
   return (
     template.includes(DEFERRED_CHARACTER_MACRO_TOKEN_PREFIX) ||
@@ -469,6 +484,11 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
     description: "Weighted random choice; weights are relative and may be decimals",
   },
   { category: "Random", syntax: "{{roll:XdY}}", description: "Dice roll total such as 2d6" },
+  {
+    category: "Random",
+    syntax: "{{pick::a::b::c}}",
+    description: "Pick one option at random and lock it for the rest of the conversation",
+  },
   { category: "Variables", syntax: "{{getvar::name}}", description: "Read a dynamic variable" },
   { category: "Variables", syntax: "{{setvar::name::value}}", description: "Set a dynamic variable" },
   { category: "Variables", syntax: "{{addvar::name::value}}", description: "Append to a dynamic variable" },
@@ -2295,6 +2315,29 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
     let total = 0;
     for (let i = 0; i < n; i++) total += randomInteger(options, `${original}:${i}`, 1, s);
     return String(total);
+  });
+
+  // ── Locked random pick: {{pick::a::b::c}} ──
+  // Each distinct choices list gets one selection that is reused for the rest of the
+  // conversation, so the same {{pick}} resolves identically on every later turn.
+  // Editing the list changes its key, which re-picks.
+  result = replaceBalancedMacros(result, (body, original) => {
+    const match = body.match(/^pick::([\s\S]*)$/i);
+    if (!match) return undefined;
+    if (!consumeMacroExpansion(options)) return original;
+
+    const choices = splitTopLevelDoubleColon(match[1] ?? "")
+      .map((choice) => choice.trim())
+      .filter(Boolean);
+    if (choices.length === 0) return "";
+    const key = pickKey(choices);
+    ctx.pickedValues ??= {};
+    let index = ctx.pickedValues[key];
+    if (index === undefined || index < 0 || index >= choices.length) {
+      index = randomInteger(options, original, 0, choices.length - 1);
+      ctx.pickedValues[key] = index;
+    }
+    return resolveMacros(choices[index] ?? "", ctx, { ...nestedMacroOptions(options), trimResult: false });
   });
 
   // ── Variable operations — resolve left-to-right so lorebook entries can set values for later entries. ──

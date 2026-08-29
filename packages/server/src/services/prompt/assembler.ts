@@ -235,6 +235,8 @@ export interface AssemblerInput {
   generationTriggers?: string[];
   /** Preview/debug assembly: lorebook markers should not consume timing or ephemeral state. */
   previewOnly?: boolean;
+  /** Locked {{pick}} outcomes carried in from chat metadata (choices-hash → chosen index). */
+  macroPickValues?: Record<string, number>;
   /** When set, replaces individual character scenario fields with this group scenario. */
   groupScenarioOverrideText?: string | null;
   /** Per-generation agent data keyed by agent type. Used when an agent section must consume fresh output. */
@@ -277,6 +279,8 @@ export interface AssemblerOutput {
   lorebookScanResult?: LorebookScanResult;
   /** Agent types whose runtime data was consumed by enabled agent_data sections. */
   runtimeAgentTypesUsed?: string[];
+  /** Locked {{pick}} outcomes after this assembly. Callers persist these to chat metadata. */
+  updatedMacroPickValues?: Record<string, number>;
 }
 
 function parsePresetParameters(raw: string): GenerationParameters {
@@ -384,6 +388,8 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       ...input.chatMessages.map((message) => message.content),
     ],
   });
+  // Carry forward {{pick}} selections locked in by earlier turns so they stay stable.
+  if (input.macroPickValues) macroCtx.pickedValues = { ...input.macroPickValues };
   const personaReferenceSources = Object.values(input.personaFields ?? {}).filter(
     (value): value is string => typeof value === "string",
   );
@@ -793,6 +799,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
         }
       : {}),
     ...(runtimeAgentTypesUsed.size > 0 ? { runtimeAgentTypesUsed: Array.from(runtimeAgentTypesUsed) } : {}),
+    ...(macroCtx.pickedValues ? { updatedMacroPickValues: macroCtx.pickedValues } : {}),
   };
 }
 

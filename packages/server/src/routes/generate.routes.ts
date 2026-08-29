@@ -2577,6 +2577,7 @@ export async function generateRoutes(app: FastifyInstance) {
             impersonate: input.impersonate === true,
             preserveImpersonatePresetSections: input.impersonate === true && presetSource === "impersonate",
             deferCharacterMacros,
+            macroPickValues: (chatMeta.macroPickValues as Record<string, number>) ?? undefined,
           };
 
           const assembled = await assemblePrompt(assemblerInput);
@@ -2648,12 +2649,14 @@ export async function generateRoutes(app: FastifyInstance) {
 
           if (assembled.updatedEntryStateOverrides) chatMeta.entryStateOverrides = assembled.updatedEntryStateOverrides;
           if (assembled.updatedEntryTimingStates) chatMeta.entryTimingStates = assembled.updatedEntryTimingStates;
+          if (assembled.updatedMacroPickValues) chatMeta.macroPickValues = assembled.updatedMacroPickValues;
           await persistLorebookRuntimeState({
             chats,
             chatId: input.chatId,
             fallbackMeta: chatMeta,
             entryStateOverrides: assembled.updatedEntryStateOverrides,
             entryTimingStates: assembled.updatedEntryTimingStates,
+            macroPickValues: assembled.updatedMacroPickValues,
           });
         }
 
