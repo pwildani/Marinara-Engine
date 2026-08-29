@@ -2080,6 +2080,11 @@ export async function generateRoutes(app: FastifyInstance) {
       let lastSavedSwipeIndex: number | null = null;
       let pendingIllustration: Promise<void> | null = null;
       let pendingIllustratorBackground: (() => Promise<void>) | null = null;
+      // A Background agent request for a new image. Held separately from the
+      // Illustrator's own thunk because both are decided inside the same results
+      // loop in result order; the Illustrator's decision wins, and this is only
+      // consumed if it did not ask for one.
+      let pendingBackgroundAgentRequest: (() => Promise<void>) | null = null;
       const collectedCommands: Array<{
         command: CharacterCommand;
         characterId: string | null;
@@ -4463,9 +4468,15 @@ export async function generateRoutes(app: FastifyInstance) {
 
         // If the background agent is enabled, load available backgrounds + tags into context
         const backgroundAgent = resolvedAgents.find((a) => a.type === "background");
+        // The Background agent may ask for a new image instead of picking one, but only
+        // when the Illustrator's background generator is actually available to serve it.
+        const backgroundGenerationAvailable =
+          resolvedAgents.some((agent) => agent.type === "illustrator") &&
+          illustratorBackgroundGenerationEnabled(chatMode, chatMeta);
         if (backgroundAgent) {
           agentContext.memory._availableBackgrounds = [];
           agentContext.memory._currentBackground = currentBackground;
+          agentContext.memory._backgroundGenerationEnabled = backgroundGenerationAvailable;
           try {
             const { readdirSync, readFileSync, existsSync } = await import("fs");
             const { join, extname } = await import("path");
@@ -8637,6 +8648,8 @@ export async function generateRoutes(app: FastifyInstance) {
             ) {
               const bgData = result.data as {
                 chosen?: string | null;
+                needsGeneration?: boolean;
+                generationHint?: string;
               };
               if (typeof bgData.chosen === "string") {
                 bgData.chosen = bgData.chosen.trim() || null;
@@ -8662,6 +8675,116 @@ export async function generateRoutes(app: FastifyInstance) {
                   await updateChatMetadataForTools({ background: bgData.chosen });
                 } catch {
                   /* non-critical */
+                }
+              }
+
+              // ── Background agent found nothing suitable and asked for a new image ──
+              // Served through the Illustrator's background generator rather than a
+              // second generation stack, so style profiles, image-connection fallback
+              // and location-slug dedup all still apply. Only runs when the Illustrator
+              // did not request a background itself, so a turn generates at most one.
+              const backgroundGenerationHint =
+                typeof bgData.generationHint === "string" ? bgData.generationHint.trim() : "";
+              if (!bgData.chosen && bgData.needsGeneration === true) {
+                const illustratorForBackgroundRequest = resolvedAgents.find((agent) => agent.type === "illustrator");
+                if (!backgroundGenerationAvailable || !illustratorForBackgroundRequest) {
+                  logger.warn(
+                    "[background] Agent requested a generated background, but automatic background generation is unavailable",
+                  );
+                } else if (!backgroundGenerationHint) {
+                  logger.warn("[background] Agent requested a generated background without a generationHint");
+                } else {
+                  const backgroundAtRequest = currentBackground;
+                  pendingBackgroundAgentRequest = async () => {
+                    try {
+                      const freshChat = await chats.getById(input.chatId);
+                      const freshMeta = parseExtra(freshChat?.metadata) as Record<string, unknown>;
+                      const backgroundBeforeGeneration =
+                        typeof freshMeta.background === "string" && freshMeta.background.trim()
+                          ? freshMeta.background.trim()
+                          : null;
+                      if (backgroundBeforeGeneration !== backgroundAtRequest) {
+                        logger.info(
+                          "[background] Skipping the requested background because the active background changed after the decision",
+                        );
+                        return;
+                      }
+
+                      const latestSnapshot = messageId
+                        ? await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex)
+                        : await gameStateStore.getForGeneration(input.chatId, { preferLatestVisible: true });
+                      const latestGameState = latestSnapshot
+                        ? parseGameStateRow(latestSnapshot as Record<string, unknown>)
+                        : gameState;
+
+                      const generated = await generateIllustratorSceneBackground({
+                        db: app.db,
+                        chatId: input.chatId,
+                        chatName: chat.name,
+                        chatMode: chatMode === "game" ? "game" : "roleplay",
+                        chatMetadata: freshMeta,
+                        currentBackground: backgroundBeforeGeneration ?? currentBackground,
+                        illustratorAgent: illustratorForBackgroundRequest,
+                        assistantResponse: completedResponse,
+                        decisionReason: backgroundGenerationHint,
+                        gameState: latestGameState,
+                        recentMessages: agentContext.recentMessages,
+                        signal: agentSignal,
+                        debugLog,
+                      });
+
+                      const chatAfterGeneration = await chats.getById(input.chatId);
+                      const metaAfterGeneration = parseExtra(chatAfterGeneration?.metadata) as Record<string, unknown>;
+                      const backgroundAfterGeneration =
+                        typeof metaAfterGeneration.background === "string" && metaAfterGeneration.background.trim()
+                          ? metaAfterGeneration.background.trim()
+                          : null;
+                      if (backgroundAfterGeneration !== backgroundAtRequest) {
+                        logger.info(
+                          "[background] Saved %s to the library without activating it because the background changed during generation",
+                          generated.filename,
+                        );
+                        return;
+                      }
+
+                      await chats.patchMetadata(input.chatId, { background: generated.filename });
+                      sendSseEvent(reply, {
+                        type: "agent_result",
+                        data: {
+                          agentType: "background",
+                          agentName: backgroundAgent?.name ?? "Background",
+                          resultType: "background_change",
+                          data: {
+                            chosen: generated.filename,
+                            generated: true,
+                            location: generated.locationName,
+                            reason: generated.reason,
+                            tags: generated.tags,
+                          },
+                          success: true,
+                          error: null,
+                        },
+                      });
+                      logger.info(
+                        '[background] Generated and activated "%s" for %s',
+                        generated.filename,
+                        generated.locationName,
+                      );
+                    } catch (backgroundError) {
+                      logger.error(backgroundError, "[background] Requested background generation failed");
+                      sendSseEvent(reply, {
+                        type: "agent_error",
+                        data: {
+                          agentType: "background",
+                          agentName: backgroundAgent?.name ?? "Background",
+                          retryTarget: "background",
+                          error: `Background generation failed: ${
+                            backgroundError instanceof Error ? backgroundError.message : String(backgroundError)
+                          }`,
+                        },
+                      });
+                    }
+                  };
                 }
               }
             }
@@ -10772,7 +10895,15 @@ export async function generateRoutes(app: FastifyInstance) {
 
       // Start the independent scene-background tail after tracker persistence,
       // then keep the SSE stream open for both visual jobs.
-      const pendingBackground = pendingIllustratorBackground ? pendingIllustratorBackground() : null;
+      // The Illustrator's own decision takes precedence; the Background agent's
+      // request is served only when the Illustrator did not ask for one.
+      const backgroundThunk = pendingIllustratorBackground ?? pendingBackgroundAgentRequest;
+      if (pendingIllustratorBackground && pendingBackgroundAgentRequest) {
+        logger.debug(
+          "[background] Illustrator requested a background this turn; skipping the Background agent's request",
+        );
+      }
+      const pendingBackground = backgroundThunk ? backgroundThunk() : null;
       if (pendingIllustration || pendingBackground) {
         await Promise.allSettled([pendingIllustration, pendingBackground].filter(Boolean) as Promise<void>[]);
       }

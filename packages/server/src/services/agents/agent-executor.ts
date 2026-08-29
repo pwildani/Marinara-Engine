@@ -3025,6 +3025,11 @@ function buildAgentExtras(
     if (context.memory._currentBackground) {
       parts.push(`<current_background>${context.memory._currentBackground}</current_background>`);
     }
+    // Tells the agent whether asking for a new image is an option at all, so it
+    // does not request generation the host cannot serve.
+    parts.push(
+      `<background_generation_enabled>${context.memory._backgroundGenerationEnabled === true}</background_generation_enabled>`,
+    );
   }
 
   if (agentTypes.includes("spotify") && context.memory._spotifyDjConstraints) {

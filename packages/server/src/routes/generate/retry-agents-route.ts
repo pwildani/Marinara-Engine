@@ -1259,6 +1259,11 @@ async function buildRetryAgentContext(args: {
       );
       agentContext.memory._availableBackgrounds = availableBackgrounds;
       agentContext.memory._currentBackground = currentBackground;
+      // Mirrors the main pipeline: only offer generation when the Illustrator's
+      // background generator is enabled and available to serve the request.
+      agentContext.memory._backgroundGenerationEnabled =
+        resolvedAgentTypes.has("illustrator") &&
+        illustratorBackgroundGenerationEnabled((chat as { mode?: unknown }).mode, chatMeta);
     } catch (err) {
       logger.warn(err, "[retry-agents] Failed to load available backgrounds for retry");
     }
@@ -3898,6 +3903,129 @@ async function applyRetryResultEffects(args: {
         data: {
           agentType: "illustrator",
           agentName: illustratorEntry.cfg?.name ?? illustratorEntry.resolved.name ?? "Illustrator",
+          retryTarget: "background",
+          error: `Background generation failed: ${
+            backgroundError instanceof Error ? backgroundError.message : String(backgroundError)
+          }`,
+        },
+      });
+    }
+    return;
+  }
+
+  // ── Retried Background agent asked for a new image instead of picking one ──
+  // Same contract as the main pipeline. Reached only when the Illustrator did not
+  // already generate a background above, so a single retry produces at most one.
+  assertRetryActive();
+  const backgroundRequestResult = sortedResults.find(
+    (result) =>
+      result.success &&
+      result.type === "background_change" &&
+      result.data &&
+      typeof result.data === "object" &&
+      (result.data as { needsGeneration?: boolean }).needsGeneration === true &&
+      !(result.data as { chosen?: string | null }).chosen,
+  );
+  const backgroundIllustratorEntry = backgroundRequestResult
+    ? resolvedAgents.find((entry) => entry.resolved.type === "illustrator")
+    : null;
+  const backgroundGenerationHint = backgroundRequestResult
+    ? ((backgroundRequestResult.data as { generationHint?: string }).generationHint ?? "").trim()
+    : "";
+  if (
+    backgroundRequestResult &&
+    backgroundIllustratorEntry &&
+    backgroundGenerationHint &&
+    illustratorBackgroundGenerationEnabled((chat as { mode?: unknown }).mode, chatMeta)
+  ) {
+    const backgroundAgentName =
+      resolvedAgents.find((entry) => entry.resolved.id === backgroundRequestResult.agentId)?.cfg?.name ?? "Background";
+    const backgroundAtRequest =
+      typeof chatMeta.background === "string" && chatMeta.background.trim() ? chatMeta.background.trim() : null;
+    try {
+      const freshChat = await chats.getById(chatId);
+      assertRetryActive();
+      const freshMeta = parseExtra(freshChat?.metadata) as Record<string, unknown>;
+      const backgroundBeforeGeneration =
+        typeof freshMeta.background === "string" && freshMeta.background.trim() ? freshMeta.background.trim() : null;
+      if (backgroundBeforeGeneration !== backgroundAtRequest) {
+        logger.info(
+          "[retry-agents/background] Skipping the requested background because the active background changed after the decision",
+        );
+        return;
+      }
+
+      const generated = await generateIllustratorSceneBackground({
+        db: app.db,
+        chatId,
+        chatName: chat.name,
+        chatMode: ((chat as { mode?: unknown }).mode === "game" ? "game" : "roleplay") as "game" | "roleplay",
+        chatMetadata: freshMeta,
+        currentBackground: backgroundBeforeGeneration,
+        illustratorAgent: backgroundIllustratorEntry.resolved,
+        assistantResponse: agentContext.mainResponse ?? "",
+        decisionReason: backgroundGenerationHint,
+        gameState: null,
+        recentMessages: agentContext.recentMessages,
+        signal: agentContext.signal,
+        debugLog: (message: string, ...values: unknown[]) =>
+          logDebugOverride(debugMode || isDebugAgentsEnabled(), message, ...values),
+      });
+      assertRetryActive();
+
+      const chatAfterGeneration = await chats.getById(chatId);
+      assertRetryActive();
+      const metaAfterGeneration = parseExtra(chatAfterGeneration?.metadata) as Record<string, unknown>;
+      const backgroundAfterGeneration =
+        typeof metaAfterGeneration.background === "string" && metaAfterGeneration.background.trim()
+          ? metaAfterGeneration.background.trim()
+          : null;
+      if (backgroundAfterGeneration !== backgroundAtRequest) {
+        logger.info(
+          "[retry-agents/background] Saved %s without activating it because the background changed during generation",
+          generated.filename,
+        );
+        return;
+      }
+
+      assertRetryActive();
+      await chats.patchMetadata(chatId, { background: generated.filename });
+      assertRetryActive();
+      sendSseEvent(reply, {
+        type: "agent_result",
+        data: {
+          agentType: "background",
+          agentName: backgroundAgentName,
+          resultType: "background_change",
+          data: {
+            chosen: generated.filename,
+            generated: true,
+            location: generated.locationName,
+            reason: generated.reason,
+            tags: generated.tags,
+          },
+          success: true,
+          error: null,
+          chatId,
+          messageId: retryMessageId || null,
+          swipeIndex: retryMessageId ? retrySwipeIndex : null,
+          generationId,
+        },
+      });
+      logger.info(
+        '[retry-agents/background] Generated and activated "%s" for %s',
+        generated.filename,
+        generated.locationName,
+      );
+    } catch (backgroundError) {
+      assertRetryActive();
+      logger.error(backgroundError, "[retry-agents/background] Requested background generation failed");
+      assertRetryActive();
+      sendSseEvent(reply, {
+        type: "agent_error",
+        data: {
+          agentType: "background",
+          agentName: backgroundAgentName,
           retryTarget: "background",
           error: `Background generation failed: ${
             backgroundError instanceof Error ? backgroundError.message : String(backgroundError)

@@ -178,7 +178,7 @@ export function buildIllustratorBackgroundPlanUserPrompt(args: {
     previousTrackedLocations.length > 0
       ? `Recent committed tracker locations: ${previousTrackedLocations.join(" -> ")}`
       : "",
-    args.decisionReason ? `First-stage Illustrator reason: ${args.decisionReason}` : "",
+    args.decisionReason ? `Reason a new background was requested: ${args.decisionReason}` : "",
     `Latest assistant scene:\n${args.assistantResponse.trim().slice(0, 8_000)}`,
     recentContext ? `Recent context:\n${recentContext}` : "",
   ]
