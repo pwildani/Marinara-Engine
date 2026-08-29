@@ -1202,6 +1202,7 @@ export function useGenerate() {
   const enqueuePendingAgentWriteApproval = useAgentStore((s) => s.enqueuePendingAgentWriteApproval);
   const setFailedAgentFailures = useAgentStore((s) => s.setFailedAgentFailures);
   const clearFailedAgentTypes = useAgentStore((s) => s.clearFailedAgentTypes);
+  const clearCompletedAgentTypesThisRun = useAgentStore((s) => s.clearCompletedAgentTypesThisRun);
 
   const generate = useCallback(
     async (params: {
@@ -1291,6 +1292,7 @@ export function useGenerate() {
         clearMariChips();
         clearMariPlan();
         clearFailedAgentTypes(params.chatId);
+        clearCompletedAgentTypesThisRun();
         setRegenerateMessageId(params.regenerateMessageId ?? null);
       }
       if (useUIStore.getState().debugMode) {
@@ -3365,6 +3367,7 @@ export function useGenerate() {
       enqueuePendingCardUpdate,
       enqueuePendingAgentWriteApproval,
       clearFailedAgentTypes,
+      clearCompletedAgentTypesThisRun,
       setFailedAgentFailures,
     ],
   );
@@ -3387,6 +3390,7 @@ export function useGenerate() {
       setProcessingRun(agentProcessingRunId, true, chatId);
       if (isTrackerRetry) useGameStateStore.getState().setRefreshingChat(chatId);
       clearFailedAgentTypes(chatId);
+      clearCompletedAgentTypesThisRun();
       if (isActiveChat()) clearThoughtBubbles();
       let hasError = false;
       let imagePromptReviewRequested = false;
@@ -3785,6 +3789,7 @@ export function useGenerate() {
       enqueuePendingCardUpdate,
       enqueuePendingAgentWriteApproval,
       clearFailedAgentTypes,
+      clearCompletedAgentTypesThisRun,
       clearThoughtBubbles,
       setCyoaChoices,
       setYoutubePlay,

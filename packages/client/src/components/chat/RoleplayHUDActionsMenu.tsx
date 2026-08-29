@@ -9,6 +9,7 @@ import {
   toAgentFailure,
   type AgentFailure,
 } from "../../lib/agent-failures";
+import { useAgentStore } from "../../stores/agent.store";
 import { ContextInjectionPanel } from "../agents/ContextInjectionPanel";
 import { ContinuityIssueChecklist } from "../agents/ContinuityIssueChecklist";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -116,6 +117,16 @@ export function RoleplayHUDActionsMenu({
   const showRetryFailedAction = !!onRetryFailedAgents && failureCount > 0;
   const showStopAgentsAction = isAgentProcessing && !!onStopAgents;
   const showFooterActions = showTrackerActions || showRetryFailedAction || showStopAgentsAction;
+
+  // While a run is in flight, name the enabled agents that have not reported back
+  // yet, so "Running..." says what it is still waiting on.
+  const completedAgentTypesThisRun = useAgentStore((state) => state.completedAgentTypesThisRun);
+  const pendingAgentNames = useMemo(() => {
+    if (!isGenerationBusy || !enabledAgentTypes) return [];
+    return [...enabledAgentTypes]
+      .filter((type) => !completedAgentTypesThisRun.includes(type))
+      .map((type) => BUILT_IN_AGENTS.find((agent) => agent.id === type)?.name ?? type);
+  }, [isGenerationBusy, enabledAgentTypes, completedAgentTypesThisRun]);
 
   useEffect(() => {
     if (!showInjectionsTab && tab === "injections") {
@@ -320,11 +331,20 @@ export function RoleplayHUDActionsMenu({
               className="flex w-full items-center gap-2 px-3 py-2 text-[0.625rem] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)]/45 hover:text-[var(--foreground)] disabled:opacity-50"
             >
               <RefreshCw size="0.6875rem" className={isGenerationBusy ? "animate-spin" : ""} />
-              {isGenerationBusy
-                ? localizeUi("ui.chat.roleplayhudactionsmenu.running")
-                : hasActiveCustomAgent
-                  ? localizeUi("ui.chat.roleplayhudactionsmenu.reRunTrackersCustomAgents")
-                  : localizeUi("ui.chat.roleplayhudactionsmenu.reRunTrackers")}
+              {isGenerationBusy ? (
+                <span className="flex flex-col items-start gap-0.5">
+                  <span>{localizeUi("ui.chat.roleplayhudactionsmenu.running")}</span>
+                  {pendingAgentNames.length > 0 && (
+                    <span className="text-[0.5rem] text-[var(--muted-foreground)]/70">
+                      {pendingAgentNames.join(", ")}
+                    </span>
+                  )}
+                </span>
+              ) : hasActiveCustomAgent ? (
+                localizeUi("ui.chat.roleplayhudactionsmenu.reRunTrackersCustomAgents")
+              ) : (
+                localizeUi("ui.chat.roleplayhudactionsmenu.reRunTrackers")
+              )}
             </button>
           )}
           {showRetryFailedAction && (

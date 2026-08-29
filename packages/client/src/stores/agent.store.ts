@@ -122,6 +122,8 @@ interface AgentState {
   failedAgentChatId: string | null;
   /** Rich failure details for the retry UI and troubleshooting copy */
   failedAgentFailures: AgentFailure[];
+  /** Agent types that have already returned a result in the current generation run. */
+  completedAgentTypesThisRun: string[];
   thoughtBubbles: Array<{
     agentId: string;
     agentName: string;
@@ -167,6 +169,7 @@ interface AgentState {
   setProcessing: (processing: boolean, chatId?: string | null) => void;
   setProcessingRun: (runId: string, processing: boolean, chatId: string) => void;
   addResult: (agentId: string, result: AgentResult) => void;
+  clearCompletedAgentTypesThisRun: () => void;
   addDebugEntry: (entry: Omit<AgentDebugEntry, "timestamp"> & { timestamp?: number }) => void;
   setFailedAgentTypes: (types: string[], chatId?: string | null) => void;
   setFailedAgentFailures: (failures: AgentFailure[], chatId?: string | null) => void;
@@ -219,6 +222,7 @@ type AgentDataState = Pick<
   | "failedAgentTypes"
   | "failedAgentChatId"
   | "failedAgentFailures"
+  | "completedAgentTypesThisRun"
   | "thoughtBubbles"
   | "echoMessages"
   | "echoVisibleCount"
@@ -252,6 +256,7 @@ function createInitialAgentDataState(): AgentDataState {
     failedAgentTypes: [],
     failedAgentChatId: null,
     failedAgentFailures: [],
+    completedAgentTypesThisRun: [],
     thoughtBubbles: [],
     echoMessages: [],
     echoVisibleCount: 0,
@@ -334,8 +339,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         const first = results.keys().next().value;
         if (first !== undefined) results.delete(first);
       }
-      return { lastResults: results };
+      const completedAgentTypesThisRun = s.completedAgentTypesThisRun.includes(agentId)
+        ? s.completedAgentTypesThisRun
+        : [...s.completedAgentTypesThisRun, agentId];
+      return { lastResults: results, completedAgentTypesThisRun };
     }),
+
+  clearCompletedAgentTypesThisRun: () => set({ completedAgentTypesThisRun: [] }),
 
   addDebugEntry: (entry) => {
     const stamped = { ...entry, timestamp: entry.timestamp ?? Date.now() };
